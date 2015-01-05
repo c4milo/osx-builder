@@ -22,11 +22,11 @@ import (
 // A virtual machine image definition
 type Image struct {
 	// Image URL where to download from
-	URL string
+	URL string `json:"url"`
 	// Checksum of the image, used to check integrity after downloading it
-	Checksum string
+	Checksum string `json:"checksum"`
 	// Algorithm use to check the checksum
-	ChecksumType string
+	ChecksumType string `json:"checksum_type"`
 	// Password to decrypt the virtual machine if it is encrypted. This is used by
 	// VIX to be able to open the virtual machine
 	Password string

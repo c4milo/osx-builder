@@ -104,7 +104,7 @@ func (v *VM) SetDefaults() {
 	}
 
 	if v.Description == "" {
-		v.Description = "Go OSX Builder machine"
+		v.Description = "Go's OSX Builder machine"
 	}
 
 	if v.ToolsInitTimeout.Seconds() <= 0 {
@@ -428,28 +428,28 @@ func (v *VM) Refresh(vmxFile string) error {
 
 	client, err := v.client()
 	if err != nil {
-		return false, err
+		return err
 	}
 	defer client.Disconnect()
 
 	vm, err := client.OpenVM(vmxFile, v.Image.Password)
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	running, err := vm.IsRunning()
 	if !running {
-		return running, err
+		return err
 	}
 
 	vcpus, err := vm.Vcpus()
 	if err != nil {
-		return running, err
+		return err
 	}
 
 	memory, err := vm.MemorySize()
 	if err != nil {
-		return running, err
+		return err
 	}
 
 	// We need to convert memory value to megabytes so humanize can interpret it
@@ -458,11 +458,32 @@ func (v *VM) Refresh(vmxFile string) error {
 	v.Memory = strings.ToLower(humanize.IBytes(uint64(memory)))
 	v.CPUs = uint(vcpus)
 	v.Name, err = vm.DisplayName()
+	if err != nil {
+		return err
+	}
 	v.Description, err = vm.Annotation()
+	if err != nil {
+		return err
+	}
 	v.VNetworkAdapters, err = vm.NetworkAdapters()
+	if err != nil {
+		return err
+	}
 	v.IPAddress, err = vm.IPAddress()
-	v.PowerState, err = vm.PowerState()
-	v.GuestOS, err = vm.GuestOS()
+	if err != nil {
+		return err
+	}
 
-	return err
+	powerState, err := vm.PowerState()
+	if err != nil {
+		return err
+	}
+
+	v.PowerState = string(powerState)
+	v.GuestOS, err = vm.GuestOS()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

@@ -1,13 +1,23 @@
 package main
 
 import (
+	"encoding/json"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"path"
+	"time"
+
+	govix "github.com/hooklift/govix"
+	"github.com/satori/go.uuid"
+	"gopkg.in/unrolled/render.v1"
 )
 
 var (
-	Port string
+	Port    string
+	r       *render.Render
+	Version string
 )
 
 func init() {
@@ -15,12 +25,26 @@ func init() {
 	if Port == "" {
 		Port = "12345"
 	}
+
+	r = render.New(render.Options{
+		IndentJSON: true,
+	})
+}
+
+func Log(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s %s", r.RemoteAddr, r.Method, r.URL)
+		handler.ServeHTTP(w, r)
+	})
 }
 
 func main() {
 	http.HandleFunc("/vms", VMHandler)
 
-	err := http.ListenAndServe(":"+Port, nil)
+	address := ":" + Port
+
+	log.Printf("OSX Builder about to listen on %s", address)
+	err := http.ListenAndServe(address, Log(http.DefaultServeMux))
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
@@ -32,81 +56,153 @@ type BuilderError struct {
 	Trace   string `json:"trace"`
 }
 
-func VMHandler(w http.ResponseWriter, r *http.Request) {
+func VMHandler(w http.ResponseWriter, req *http.Request) {
 	var err error
-	var vms []VMInfo
-	var vminfo VMInfo
+	var vms []string
+	var vminfo *VMInfo
 
-	switch r.Method {
+	switch req.Method {
 	case "POST":
-		vminfo, err = LaunchVM(w, r)
+		var params LaunchVMParams
+		body, err := ioutil.ReadAll(req.Body)
+		if err != nil {
+			//TODO(c4milo): Wrap error in BuilderError
+			r.JSON(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		err = json.Unmarshal(body, params)
+		if err != nil {
+			//TODO(c4milo): Wrap error in BuilderError
+			r.JSON(w, http.StatusUnsupportedMediaType, err.Error())
+			return
+		}
+
+		vminfo, err = LaunchVM(params)
 	case "DELETE":
-		err = DestroyVM(w, r)
+		params := DestroyVMParams{
+			ID: path.Base(req.URL.Path),
+		}
+		err = DestroyVM(params)
 	case "GET":
-		vms, err = ListVMs(w, r)
+		params := ListVMsParams{
+			Status: req.URL.Query().Get("status"),
+		}
+		vms, err = ListVMs(params)
 	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte("Method Not Allowed"))
+		r.JSON(w, http.StatusMethodNotAllowed, nil)
+		return
 	}
 
 	if err != nil {
 		switch err {
 		default:
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
+			r.JSON(w, http.StatusInternalServerError, err.Error())
 		}
 	}
-}
 
-type OSImage struct {
-	URL          string `json:"url"`
-	Checksum     string `json:"checksum"`
-	ChecksumType string `json:"checksum_type"`
+	if vminfo != nil {
+		r.JSON(w, http.StatusCreated, vminfo)
+		return
+	}
+
+	if vms != nil {
+		r.JSON(w, http.StatusOK, vms)
+		return
+	}
+
+	r.JSON(w, http.StatusNotFound, nil)
 }
 
 type VMInfo struct {
-	ID        string      `json:"id"`
-	IPAddress string      `json:"ip_address"`
-	Status    string      `json:"status"`
-	GuestOS   string      `json:"guest_os"`
-	NetType   NetworkType `json:"network_type"`
-	CPUs      uint        `json:"cpus"`
-	Memory    string      `json:"memory"`
-	Image     OSImage     `json:"image"`
+	ID        string            `json:"id"`
+	IPAddress string            `json:"ip_address"`
+	Status    string            `json:"status"`
+	GuestOS   string            `json:"guest_os"`
+	NetType   govix.NetworkType `json:"network_type"`
+	CPUs      uint              `json:"cpus"`
+	Memory    string            `json:"memory"`
+	OSImage   Image             `json:"image"`
 }
-
-type NetworkType string
-
-const (
-	Bridged  NetworkType = "bridged"
-	NAT      NetworkType = "nat"
-	HostOnly NetworkType = "hostonly"
-)
 
 type LaunchVMParams struct {
-	CPUs           uint        `json:"cpus"`
-	Memory         string      `json:"memory"`
-	NetType        NetworkType `json:"network_type"`
-	Image          OSImage     `json:"image"`
-	BoostrapScript string      `json:"boostrap_script"`
+	CPUs             uint              `json:"cpus"`
+	Memory           string            `json:"memory"`
+	NetType          govix.NetworkType `json:"network_type"`
+	OSImage          Image             `json:"image"`
+	BootstrapScript  string            `json:"bootstrap_script"`
+	ToolsInitTimeout time.Duration     `json:"tools_init_timeout"`
+	LaunchGUI        bool              `json:"launch_gui"`
+	CallbackURL      string            `json:"callback_url"`
 }
 
-func LaunchVM(params LaunchVMParams) {
+func LaunchVM(params LaunchVMParams) (*VMInfo, error) {
+	name := uuid.NewV4()
 
+	vm := VM{
+		Provider:         string(govix.VMWARE_WORKSTATION),
+		VerifySSL:        false,
+		Name:             name.String(),
+		Image:            params.OSImage,
+		CPUs:             params.CPUs,
+		Memory:           params.Memory,
+		UpgradeVHardware: false,
+		ToolsInitTimeout: params.ToolsInitTimeout,
+		LaunchGUI:        params.LaunchGUI,
+	}
+
+	id, err := vm.Create()
+	if err != nil {
+		return nil, err
+
+	}
+
+	if vm.IPAddress == "" {
+		vm.Refresh(id)
+	}
+
+	vminfo := &VMInfo{
+		ID:        id,
+		IPAddress: vm.IPAddress,
+		Status:    vm.PowerState,
+		GuestOS:   vm.GuestOS,
+		NetType:   vm.VNetworkAdapters[0].ConnType,
+		CPUs:      vm.CPUs,
+		Memory:    vm.Memory,
+		OSImage:   params.OSImage,
+	}
+
+	return vminfo, nil
 }
 
 type DestroyVMParams struct {
 	ID string
 }
 
-func DestroyVM(params DestroyVMParams) {
+func DestroyVM(params DestroyVMParams) error {
+	vm := VM{
+		Provider:  string(govix.VMWARE_WORKSTATION),
+		VerifySSL: false,
+	}
 
+	return vm.Destroy(params.ID)
 }
 
 type ListVMsParams struct {
 	Status string
 }
 
-func ListVMs(params ListVMsParams) {
+func ListVMs(params ListVMsParams) ([]string, error) {
+	vm := VM{
+		Provider:  string(govix.VMWARE_WORKSTATION),
+		VerifySSL: false,
+	}
 
+	host, err := vm.client()
+	if err != nil {
+		return nil, err
+	}
+	defer host.Disconnect()
+
+	return host.FindItems(govix.FIND_RUNNING_VMS)
 }
