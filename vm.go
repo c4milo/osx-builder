@@ -49,6 +49,10 @@ type VM struct {
 	CDDVDDrives []*govix.CDDVDDrive
 	// VM IP address as reported by VIX
 	IPAddress string
+	// Power status
+	PowerState string
+	// Guest OS
+	GuestOS string
 }
 
 // Creates VIX instance with VMware
@@ -419,7 +423,7 @@ func (v *VM) Destroy(vmxFile string) error {
 }
 
 // Refreshes state with VMware
-func (v *VM) Refresh(vmxFile string) (bool, error) {
+func (v *VM) Refresh(vmxFile string) error {
 	log.Printf("[DEBUG] Syncing VM resource %s...", vmxFile)
 
 	client, err := v.client()
@@ -457,6 +461,8 @@ func (v *VM) Refresh(vmxFile string) (bool, error) {
 	v.Description, err = vm.Annotation()
 	v.VNetworkAdapters, err = vm.NetworkAdapters()
 	v.IPAddress, err = vm.IPAddress()
+	v.PowerState, err = vm.PowerState()
+	v.GuestOS, err = vm.GuestOS()
 
-	return running, err
+	return err
 }
