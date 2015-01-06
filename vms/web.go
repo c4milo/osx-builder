@@ -20,7 +20,7 @@ func Init(router *httprouter.Router) {
 	log.Infoln("Initializing vms module...")
 
 	router.POST("/vms", CreateVM)
-	router.GET("/vms", ListVMs)
+	//router.GET("/vms", ListVMs)
 	router.GET("/vms/:id", GetVM)
 	router.DELETE("/vms/:id", DestroyVM)
 }
