@@ -219,7 +219,7 @@ func (v *VM) Update(vmxFile string) error {
 	if running {
 		log.Printf("[INFO] Virtual machine seems to be running, we need to " +
 			"power it off in order to make changes.")
-		err = v.powerOff(vm)
+		err = powerOff(vm)
 		if err != nil {
 			return err
 		}
@@ -301,7 +301,7 @@ func (v *VM) Update(vmxFile string) error {
 }
 
 // Powers off a virtual machine attempting a graceful shutdown.
-func (v *VM) powerOff(vm *govix.VM) error {
+func powerOff(vm *govix.VM) error {
 	tstate, err := vm.ToolsState()
 	if err != nil {
 		return err
@@ -350,7 +350,7 @@ func (v *VM) Destroy(vmxFile string) error {
 	}
 
 	if running {
-		if err = v.powerOff(vm); err != nil {
+		if err = powerOff(vm); err != nil {
 			return err
 		}
 	}
