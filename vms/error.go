@@ -42,3 +42,8 @@ var ErrOpeningVM = apperror.Error{
 		"Caused, most likely, by a corrupt VMX file or a stalled lock.",
 	HTTPStatus: http.StatusConflict,
 }
+
+var ErrCbURL = apperror.Error{
+	Code:    "err-marshalling-response",
+	Message: "There was an error marshaling the response. Please try again creating your virtual machine.",
+}

@@ -1,6 +1,7 @@
 package vms
 
 import (
+	"bytes"
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
@@ -33,6 +34,35 @@ type CreateVMParams struct {
 	ToolsInitTimeout time.Duration     `json:"tools_init_timeout"`
 	LaunchGUI        bool              `json:"launch_gui"`
 	CallbackURL      string            `json:"callback_url"`
+}
+
+func sendResult(url string, obj interface{}) {
+	if url == "" {
+		return
+	}
+	data, err := json.Marshal(obj)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"vm":         obj,
+			"code":       ErrCreatingVM.Code,
+			"error":      err.Error(),
+			"stacktrace": apperror.GetStacktrace(),
+		}).Error(ErrCbURL.Message)
+
+		data, err = json.Marshal(ErrCbURL)
+		if err != nil {
+			return
+		}
+	}
+	_, err = http.Post(url, "application/json", bytes.NewBuffer(data))
+	if err != nil {
+		log.WithFields(log.Fields{
+			"vm":         obj,
+			"code":       ErrCbURL.Code,
+			"error":      err.Error(),
+			"stacktrace": apperror.GetStacktrace(),
+		}).Error(ErrCbURL.Message)
+	}
 }
 
 func CreateVM(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
@@ -85,23 +115,28 @@ func CreateVM(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	vm.VNetworkAdapters = make([]*govix.NetworkAdapter, 0, 1)
 	vm.VNetworkAdapters = append(vm.VNetworkAdapters, nic)
 
-	id, err := vm.Create()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"code":       ErrCreatingVM.Code,
-			"error":      err.Error(),
-			"stacktrace": apperror.GetStacktrace(),
-		}).Error(ErrCreatingVM.Message)
+	go func() {
+		id, err := vm.Create()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"vm":         vm,
+				"code":       ErrCreatingVM.Code,
+				"error":      err.Error(),
+				"stacktrace": apperror.GetStacktrace(),
+			}).Error(ErrCreatingVM.Message)
 
-		r.JSON(w, ErrCreatingVM.HTTPStatus, ErrCreatingVM)
-		return
-	}
+			sendResult(params.CallbackURL, ErrCreatingVM)
+			return
+		}
 
-	if vm.IPAddress == "" {
-		vm.Refresh(id)
-	}
+		if vm.IPAddress == "" {
+			vm.Refresh(id)
+		}
 
-	r.JSON(w, http.StatusCreated, vm)
+		sendResult(params.CallbackURL, vm)
+	}()
+
+	r.JSON(w, http.StatusAccepted, vm)
 }
 
 type DestroyVMParams struct {
@@ -197,11 +232,18 @@ func ListVMs(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	r.JSON(w, http.StatusOK, ids)
 }
 
+type GetVMParams struct {
+	ID string
+}
+
 func GetVM(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	r := config.Render
 
-	id := ps.ByName("id")
-	vm, err := FindVM(id)
+	params := GetVMParams{
+		ID: ps.ByName("id"),
+	}
+
+	vm, err := FindVM(params.ID)
 
 	if err != nil {
 		log.WithFields(log.Fields{
