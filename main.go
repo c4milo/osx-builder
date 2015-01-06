@@ -6,11 +6,14 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path"
 	"time"
 
+	"github.com/codegangsta/negroni"
 	govix "github.com/hooklift/govix"
+	"github.com/julienschmidt/httprouter"
+	"github.com/meatballhat/negroni-logrus"
 	"github.com/satori/go.uuid"
+	"github.com/stretchr/graceful"
 	"gopkg.in/unrolled/render.v1"
 )
 
@@ -31,87 +34,29 @@ func init() {
 	})
 }
 
-func Log(handler http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s %s", r.RemoteAddr, r.Method, r.URL)
-		handler.ServeHTTP(w, r)
-	})
-}
-
 func main() {
-	http.HandleFunc("/vms", VMHandler)
+	router := httprouter.New()
+
+	router.POST("/vms", LaunchVM)
+	router.DELETE("/vms/:id", DestroyVM)
+	router.GET("/vms", ListVMs)
+	router.GET("/vms/:id", GetVM)
+
+	n := negroni.Classic()
+	n.Use(negronilogrus.NewMiddleware())
+	n.UseHandler(router)
 
 	address := ":" + Port
 
 	log.Printf("OSX Builder %s about to listen on %s", Version, address)
-	err := http.ListenAndServe(address, Log(http.DefaultServeMux))
-	if err != nil {
-		log.Fatal("ListenAndServe: ", err)
-	}
+
+	graceful.Run(address, 10*time.Second, n)
 }
 
 type BuilderError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 	Trace   string `json:"trace"`
-}
-
-func VMHandler(w http.ResponseWriter, req *http.Request) {
-	var err error
-	var vms []string
-	var vminfo *VM
-
-	switch req.Method {
-	case "POST":
-		var params LaunchVMParams
-		body, err := ioutil.ReadAll(req.Body)
-		if err != nil {
-			//TODO(c4milo): Wrap error in BuilderError
-			r.JSON(w, http.StatusBadRequest, err.Error())
-			return
-		}
-
-		err = json.Unmarshal(body, params)
-		if err != nil {
-			//TODO(c4milo): Wrap error in BuilderError
-			r.JSON(w, http.StatusUnsupportedMediaType, err.Error())
-			return
-		}
-
-		vminfo, err = LaunchVM(params)
-	case "DELETE":
-		params := DestroyVMParams{
-			ID: path.Base(req.URL.Path),
-		}
-		err = DestroyVM(params)
-	case "GET":
-		params := ListVMsParams{
-			Status: req.URL.Query().Get("status"),
-		}
-		vms, err = ListVMs(params)
-	default:
-		r.JSON(w, http.StatusMethodNotAllowed, nil)
-		return
-	}
-
-	if err != nil {
-		switch err {
-		default:
-			r.JSON(w, http.StatusInternalServerError, err.Error())
-		}
-	}
-
-	if vminfo != nil {
-		r.JSON(w, http.StatusCreated, vminfo)
-		return
-	}
-
-	if vms != nil {
-		r.JSON(w, http.StatusOK, vms)
-		return
-	}
-
-	r.JSON(w, http.StatusNotFound, nil)
 }
 
 type LaunchVMParams struct {
@@ -125,62 +70,111 @@ type LaunchVMParams struct {
 	CallbackURL      string            `json:"callback_url"`
 }
 
-func LaunchVM(params LaunchVMParams) (*VM, error) {
+func LaunchVM(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	var params LaunchVMParams
+	body, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		//TODO(c4milo): Wrap error in BuilderError
+		r.JSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	err = json.Unmarshal(body, &params)
+	if err != nil {
+		//TODO(c4milo): Wrap error in BuilderError
+		r.JSON(w, http.StatusUnsupportedMediaType, err.Error())
+		return
+	}
+
 	name := uuid.NewV4()
 
 	vm := &VM{
-		Provider:         string(govix.VMWARE_WORKSTATION),
-		VerifySSL:        false,
+		provider:         string(govix.VMWARE_WORKSTATION),
+		verifySSL:        false,
 		Name:             name.String(),
 		Image:            params.OSImage,
 		CPUs:             params.CPUs,
 		Memory:           params.Memory,
-		UpgradeVHardware: false,
+		upgradeVHardware: false,
 		ToolsInitTimeout: params.ToolsInitTimeout,
 		LaunchGUI:        params.LaunchGUI,
 	}
 
+	nic := &govix.NetworkAdapter{
+		ConnType: params.NetType,
+	}
+
+	vm.vNetworkAdapters = make([]*govix.NetworkAdapter, 0, 1)
+	vm.vNetworkAdapters = append(vm.vNetworkAdapters, nic)
+
 	id, err := vm.Create()
 	if err != nil {
-		return nil, err
-
+		r.JSON(w, http.StatusInternalServerError, err.Error())
+		return
 	}
 
 	if vm.IPAddress == "" {
 		vm.Refresh(id)
 	}
 
-	return vm, nil
+	r.JSON(w, http.StatusCreated, vm)
 }
 
 type DestroyVMParams struct {
 	ID string
 }
 
-func DestroyVM(params DestroyVMParams) error {
-	vm := VM{
-		Provider:  string(govix.VMWARE_WORKSTATION),
-		VerifySSL: false,
+func DestroyVM(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	params := DestroyVMParams{
+		ID: ps.ByName("id"),
 	}
 
-	return vm.Destroy(params.ID)
+	vm := VM{
+		provider:  string(govix.VMWARE_WORKSTATION),
+		verifySSL: false,
+	}
+
+	err := vm.Destroy(params.ID)
+	if err != nil {
+		r.JSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	r.JSON(w, http.StatusNoContent, nil)
 }
 
 type ListVMsParams struct {
 	Status string
 }
 
-func ListVMs(params ListVMsParams) ([]string, error) {
+func ListVMs(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// params := ListVMsParams{
+	// 	Status: req.URL.Query().Get("status"),
+	// }
+
 	vm := VM{
-		Provider:  string(govix.VMWARE_WORKSTATION),
-		VerifySSL: false,
+		provider:  string(govix.VMWARE_WORKSTATION),
+		verifySSL: false,
 	}
 
 	host, err := vm.client()
 	if err != nil {
-		return nil, err
+		r.JSON(w, http.StatusInternalServerError, err.Error())
+		return
 	}
 	defer host.Disconnect()
 
-	return host.FindItems(govix.FIND_RUNNING_VMS)
+	ids, err := host.FindItems(govix.FIND_RUNNING_VMS)
+	if err != nil {
+		r.JSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	r.JSON(w, http.StatusOK, ids)
+}
+
+func GetVM(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	id := ps.ByName("id")
+
+	r.JSON(w, http.StatusOK, id)
 }
