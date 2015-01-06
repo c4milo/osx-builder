@@ -43,7 +43,7 @@ func main() {
 
 	address := ":" + Port
 
-	log.Printf("OSX Builder about to listen on %s", address)
+	log.Printf("OSX Builder %s about to listen on %s", Version, address)
 	err := http.ListenAndServe(address, Log(http.DefaultServeMux))
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
@@ -59,7 +59,7 @@ type BuilderError struct {
 func VMHandler(w http.ResponseWriter, req *http.Request) {
 	var err error
 	var vms []string
-	var vminfo *VMInfo
+	var vminfo *VM
 
 	switch req.Method {
 	case "POST":
@@ -114,17 +114,6 @@ func VMHandler(w http.ResponseWriter, req *http.Request) {
 	r.JSON(w, http.StatusNotFound, nil)
 }
 
-type VMInfo struct {
-	ID        string            `json:"id"`
-	IPAddress string            `json:"ip_address"`
-	Status    string            `json:"status"`
-	GuestOS   string            `json:"guest_os"`
-	NetType   govix.NetworkType `json:"network_type"`
-	CPUs      uint              `json:"cpus"`
-	Memory    string            `json:"memory"`
-	OSImage   Image             `json:"image"`
-}
-
 type LaunchVMParams struct {
 	CPUs             uint              `json:"cpus"`
 	Memory           string            `json:"memory"`
@@ -136,10 +125,10 @@ type LaunchVMParams struct {
 	CallbackURL      string            `json:"callback_url"`
 }
 
-func LaunchVM(params LaunchVMParams) (*VMInfo, error) {
+func LaunchVM(params LaunchVMParams) (*VM, error) {
 	name := uuid.NewV4()
 
-	vm := VM{
+	vm := &VM{
 		Provider:         string(govix.VMWARE_WORKSTATION),
 		VerifySSL:        false,
 		Name:             name.String(),
@@ -161,18 +150,7 @@ func LaunchVM(params LaunchVMParams) (*VMInfo, error) {
 		vm.Refresh(id)
 	}
 
-	vminfo := &VMInfo{
-		ID:        id,
-		IPAddress: vm.IPAddress,
-		Status:    vm.PowerState,
-		GuestOS:   vm.GuestOS,
-		NetType:   vm.VNetworkAdapters[0].ConnType,
-		CPUs:      vm.CPUs,
-		Memory:    vm.Memory,
-		OSImage:   params.OSImage,
-	}
-
-	return vminfo, nil
+	return vm, nil
 }
 
 type DestroyVMParams struct {

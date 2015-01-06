@@ -23,24 +23,24 @@ type VM struct {
 	// Whether to verify SSL or not for remote connections in ESXi
 	VerifySSL bool
 	// Name of the virtual machine
-	Name string
+	Name string `json:"id"`
 	// Description for the virtual machine, it is created as an annotation in
 	// VMware.
 	Description string
 	// Image to use during the creation of this virtual machine
-	Image Image
+	Image Image `json:"image"`
 	// Number of virtual cpus
-	CPUs uint
+	CPUs uint `json:"cpus"`
 	// Memory size in megabytes.
-	Memory string
+	Memory string `json:"memory"`
 	// Switches to where this machine is going to be attach to
 	VSwitches []string
 	// Whether to upgrade the VM virtual hardware
 	UpgradeVHardware bool
 	// The timeout to wait for VMware Tools to be initialized inside the VM
-	ToolsInitTimeout time.Duration
+	ToolsInitTimeout time.Duration `json:"tools_init_timeout"`
 	// Whether to launch the VM with graphical environment
-	LaunchGUI bool
+	LaunchGUI bool `json:"launch_gui"`
 	// Whether to enable or disable shared folders for this VM
 	SharedFolders bool
 	// Network adapters
@@ -48,11 +48,11 @@ type VM struct {
 	// CD/DVD drives
 	CDDVDDrives []*govix.CDDVDDrive
 	// VM IP address as reported by VIX
-	IPAddress string
+	IPAddress string `json:"ip_address"`
 	// Power status
-	PowerState string
+	PowerState string `json:"power_state"`
 	// Guest OS
-	GuestOS string
+	GuestOS string `json:"guest_os"`
 }
 
 // Creates VIX instance with VMware
