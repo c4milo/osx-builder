@@ -31,6 +31,15 @@ deps:
 	go get github.com/c4milo/github-release
 	go get github.com/satori/go.uuid
 	go get gopkg.in/unrolled/render.v1
+	go get github.com/codegangsta/negroni
+	go get github.com/meatballhat/negroni-logrus
+	go get github.com/julienschmidt/httprouter
+	go get github.com/Sirupsen/logrus
+	go get github.com/c4milo/unzipit
+	go get github.com/hooklift/govmx
+	go get github.com/dustin/go-humanize
+	go get github.com/stretchr/graceful
+	mkdir -p $GOPATH/src/github.com/hooklift/govix && git clone https://github.com/hooklift/govix.git $GOPATH/src/github.com/hooklift/govix
 
 release: dist
 	@latest_tag=$$(git describe --tags `git rev-list --tags --max-count=1`); \
