@@ -175,6 +175,16 @@ func ListVMs(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 
 func GetVM(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	id := ps.ByName("id")
+	vm, err := FindVM(id)
+	if err != nil {
+		r.JSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
-	r.JSON(w, http.StatusOK, id)
+	if vm == nil {
+		r.JSON(w, http.StatusNotFound, nil)
+		return
+	}
+
+	r.JSON(w, http.StatusOK, vm)
 }

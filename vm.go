@@ -53,6 +53,8 @@ type VM struct {
 	PowerState string `json:"power_state"`
 	// Guest OS
 	GuestOS string `json:"guest_os"`
+	// VMX file path for Internal use only
+	vmxFile string
 }
 
 // Creates VIX instance with VMware
@@ -179,8 +181,7 @@ func (v *VM) Create() (string, error) {
 		return "", err
 	}
 
-	baseVMDir := filepath.Join(usr.HomeDir, ".go-osx-builder", "vix", "vms",
-		image.Checksum, v.Name)
+	baseVMDir := filepath.Join(usr.HomeDir, ".go-osx-builder", "vix", "vms")
 
 	newvmx := filepath.Join(baseVMDir, v.Name+".vmx")
 
@@ -422,6 +423,29 @@ func (v *VM) Destroy(vmxFile string) error {
 	return vm.Delete(govix.VMDELETE_KEEP_FILES | govix.VMDELETE_FORCE)
 }
 
+func FindVM(id string) (*VM, error) {
+	usr, err := user.Current()
+	if err != nil {
+		return nil, err
+	}
+
+	vmxFile := filepath.Join(usr.HomeDir, ".go-osx-builder", "vix", "vms", id+".vmx")
+
+	_, err = os.Stat(vmxFile)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	vm := &VM{}
+
+	err = vm.Refresh(vmxFile)
+	if err != nil {
+		return nil, err
+	}
+
+	return vm, nil
+}
+
 // Refreshes state with VMware
 func (v *VM) Refresh(vmxFile string) error {
 	log.Printf("[DEBUG] Syncing VM resource %s...", vmxFile)
@@ -457,6 +481,7 @@ func (v *VM) Refresh(vmxFile string) error {
 	memory = (memory * 1024) * 1024
 	v.Memory = strings.ToLower(humanize.IBytes(uint64(memory)))
 	v.CPUs = uint(vcpus)
+
 	v.Name, err = vm.DisplayName()
 	if err != nil {
 		return err
