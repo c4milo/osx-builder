@@ -1,4 +1,4 @@
-package main
+package vms
 
 import (
 	"crypto/md5"
@@ -29,7 +29,7 @@ type Image struct {
 	ChecksumType string `json:"checksum_type"`
 	// Password to decrypt the virtual machine if it is encrypted. This is used by
 	// VIX to be able to open the virtual machine
-	Password string
+	Password string `json:"-"`
 	// Internal file reference
 	file *os.File
 }

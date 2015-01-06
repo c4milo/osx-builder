@@ -1,16 +1,16 @@
-package main
+package vms
 
 import (
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
-	"os/user"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"time"
 
+	"github.com/c4milo/go-osx-builder/config"
 	"github.com/c4milo/unzipit"
 	"github.com/dustin/go-humanize"
 	govix "github.com/hooklift/govix"
@@ -18,8 +18,10 @@ import (
 
 // Virtual machine configuration
 type VM struct {
+	// VMX file path for Internal use only
+	VMXFile string `json:"-"`
 	// Which VMware VIX service provider to use. ie: fusion, workstation, server, etc
-	provider string
+	provider govix.Provider
 	// Whether to verify SSL or not for remote connections in ESXi
 	verifySSL bool
 	// Name of the virtual machine
@@ -33,56 +35,31 @@ type VM struct {
 	CPUs uint `json:"cpus"`
 	// Memory size in megabytes.
 	Memory string `json:"memory"`
-	// Switches to where this machine is going to be attach to
-	vSwitches []string
 	// Whether to upgrade the VM virtual hardware
 	upgradeVHardware bool
 	// The timeout to wait for VMware Tools to be initialized inside the VM
 	ToolsInitTimeout time.Duration `json:"tools_init_timeout"`
 	// Whether to launch the VM with graphical environment
 	LaunchGUI bool `json:"launch_gui"`
-	// Whether to enable or disable shared folders for this VM
-	sharedFolders bool
 	// Network adapters
 	vNetworkAdapters []*govix.NetworkAdapter
-	// CD/DVD drives
-	cDDVDDrives []*govix.CDDVDDrive
 	// VM IP address as reported by VIX
 	IPAddress string `json:"ip_address"`
 	// Power status
 	PowerState string `json:"power_state"`
 	// Guest OS
 	GuestOS string `json:"guest_os"`
-	// VMX file path for Internal use only
-	vmxFile string
 }
 
 // Creates VIX instance with VMware
 func (v *VM) client() (*govix.Host, error) {
-	var p govix.Provider
-
-	switch strings.ToLower(v.provider) {
-	case "fusion", "workstation":
-		p = govix.VMWARE_WORKSTATION
-	case "serverv1":
-		p = govix.VMWARE_SERVER
-	case "serverv2":
-		p = govix.VMWARE_VI_SERVER
-	case "player":
-		p = govix.VMWARE_PLAYER
-	case "workstation_shared":
-		p = govix.VMWARE_WORKSTATION_SHARED
-	default:
-		p = govix.VMWARE_WORKSTATION
-	}
-
 	var options govix.HostOption
 	if v.verifySSL {
 		options = govix.VERIFY_SSL_CERT
 	}
 
 	host, err := govix.Connect(govix.ConnectConfig{
-		Provider: p,
+		Provider: v.provider,
 		Options:  options,
 	})
 
@@ -119,21 +96,17 @@ func (v *VM) SetDefaults() {
 func (v *VM) Create() (string, error) {
 	log.Printf("[DEBUG] Creating VM resource...")
 
-	usr, err := user.Current()
-	if err != nil {
-		return "", err
-	}
-
 	image := v.Image
-	goldPath := filepath.Join(usr.HomeDir, filepath.Join(".go-osx-builder/vix/gold", image.Checksum))
-	_, err = os.Stat(goldPath)
+	goldPath := filepath.Join(config.GoldImgsPath, image.Checksum)
+
+	_, err := os.Stat(goldPath)
 	finfo, _ := ioutil.ReadDir(goldPath)
 	goldPathEmpty := len(finfo) == 0
 
 	if os.IsNotExist(err) || goldPathEmpty {
 		log.Println("[DEBUG] Gold virtual machine does not exist or is empty")
 
-		imgPath := filepath.Join(usr.HomeDir, ".go-osx-builder/vix/images", image.Checksum)
+		imgPath := filepath.Join(config.ImagesPath, image.Checksum)
 		if err = image.Download(imgPath); err != nil {
 			return "", err
 		}
@@ -176,20 +149,18 @@ func (v *VM) Create() (string, error) {
 	log.Printf("[INFO] Opening Gold virtual machine from %s", vmxFile)
 
 	vm, err := client.OpenVM(vmxFile, v.Image.Password)
-
 	if err != nil {
 		return "", err
 	}
 
-	baseVMDir := filepath.Join(usr.HomeDir, ".go-osx-builder", "vix", "vms")
-
-	newvmx := filepath.Join(baseVMDir, v.Name+".vmx")
+	vmFolder := filepath.Join(config.VMSPath, v.Name)
+	newvmx := filepath.Join(config.VMSPath, v.Name, v.Name+".vmx")
 
 	if _, err = os.Stat(newvmx); os.IsNotExist(err) {
 		log.Printf("[INFO] Virtual machine clone not found: %s, err: %+v", newvmx, err)
 		// If there is not a VMX file, make sure nothing else is in there either.
 		// We were seeing VIX 13004 errors when only a nvram file existed.
-		os.RemoveAll(baseVMDir)
+		os.RemoveAll(vmFolder)
 
 		log.Printf("[INFO] Cloning Gold virtual machine into %s...", newvmx)
 		_, err := vm.Clone(govix.CLONETYPE_FULL, newvmx)
@@ -303,20 +274,6 @@ func (v *VM) Update(vmxFile string) error {
 		}
 	}
 
-	log.Printf("[DEBUG] Removing all CD/DVD drives from vmx file...")
-	err = vm.RemoveAllCDDVDDrives()
-	if err != nil {
-		return err
-	}
-
-	log.Println("[INFO] Attaching CD/DVD drives... ")
-	for _, cdrom := range v.cDDVDDrives {
-		err := vm.AttachCDDVD(cdrom)
-		if err != nil {
-			return err
-		}
-	}
-
 	log.Println("[INFO] Powering virtual machine on...")
 	var options govix.VMPowerOption
 
@@ -337,21 +294,8 @@ func (v *VM) Update(vmxFile string) error {
 	if err != nil {
 		log.Println("[WARN] VMware Tools took too long to initialize or is not " +
 			"installed.")
-
-		if v.sharedFolders {
-			log.Println("[WARN] Enabling shared folders is not possible.")
-		}
-		return nil
 	}
 
-	if v.sharedFolders {
-		log.Println("[DEBUG] Enabling shared folders...")
-
-		err = vm.EnableSharedFolders(v.sharedFolders)
-		if err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -424,20 +368,16 @@ func (v *VM) Destroy(vmxFile string) error {
 }
 
 func FindVM(id string) (*VM, error) {
-	usr, err := user.Current()
-	if err != nil {
-		return nil, err
-	}
+	vmxFile := filepath.Join(config.VMSPath, id, id+".vmx")
 
-	vmxFile := filepath.Join(usr.HomeDir, ".go-osx-builder", "vix", "vms", id+".vmx")
-
-	_, err = os.Stat(vmxFile)
+	_, err := os.Stat(vmxFile)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
 
 	vm := &VM{}
 
+	log.Printf("Getting VM information from %s...\n", vmxFile)
 	err = vm.Refresh(vmxFile)
 	if err != nil {
 		return nil, err
@@ -450,12 +390,17 @@ func FindVM(id string) (*VM, error) {
 func (v *VM) Refresh(vmxFile string) error {
 	log.Printf("[DEBUG] Syncing VM resource %s...", vmxFile)
 
+	v.provider = govix.VMWARE_WORKSTATION
+	v.verifySSL = false
+	v.VMXFile = vmxFile
+
 	client, err := v.client()
 	if err != nil {
 		return err
 	}
 	defer client.Disconnect()
 
+	log.Printf("[DEBUG] Opening VM %s...", vmxFile)
 	vm, err := client.OpenVM(vmxFile, v.Image.Password)
 	if err != nil {
 		return err
@@ -513,5 +458,6 @@ func (v *VM) Refresh(vmxFile string) error {
 		return err
 	}
 
+	log.Printf("[DEBUG] Finished syncing VM %s...", vmxFile)
 	return nil
 }
