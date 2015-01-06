@@ -19,14 +19,14 @@ import (
 // Virtual machine configuration
 type VM struct {
 	// Which VMware VIX service provider to use. ie: fusion, workstation, server, etc
-	Provider string
+	provider string
 	// Whether to verify SSL or not for remote connections in ESXi
-	VerifySSL bool
+	verifySSL bool
 	// Name of the virtual machine
 	Name string `json:"id"`
 	// Description for the virtual machine, it is created as an annotation in
 	// VMware.
-	Description string
+	description string
 	// Image to use during the creation of this virtual machine
 	Image Image `json:"image"`
 	// Number of virtual cpus
@@ -34,19 +34,19 @@ type VM struct {
 	// Memory size in megabytes.
 	Memory string `json:"memory"`
 	// Switches to where this machine is going to be attach to
-	VSwitches []string
+	vSwitches []string
 	// Whether to upgrade the VM virtual hardware
-	UpgradeVHardware bool
+	upgradeVHardware bool
 	// The timeout to wait for VMware Tools to be initialized inside the VM
 	ToolsInitTimeout time.Duration `json:"tools_init_timeout"`
 	// Whether to launch the VM with graphical environment
 	LaunchGUI bool `json:"launch_gui"`
 	// Whether to enable or disable shared folders for this VM
-	SharedFolders bool
+	sharedFolders bool
 	// Network adapters
-	VNetworkAdapters []*govix.NetworkAdapter
+	vNetworkAdapters []*govix.NetworkAdapter
 	// CD/DVD drives
-	CDDVDDrives []*govix.CDDVDDrive
+	cDDVDDrives []*govix.CDDVDDrive
 	// VM IP address as reported by VIX
 	IPAddress string `json:"ip_address"`
 	// Power status
@@ -59,7 +59,7 @@ type VM struct {
 func (v *VM) client() (*govix.Host, error) {
 	var p govix.Provider
 
-	switch strings.ToLower(v.Provider) {
+	switch strings.ToLower(v.provider) {
 	case "fusion", "workstation":
 		p = govix.VMWARE_WORKSTATION
 	case "serverv1":
@@ -75,7 +75,7 @@ func (v *VM) client() (*govix.Host, error) {
 	}
 
 	var options govix.HostOption
-	if v.VerifySSL {
+	if v.verifySSL {
 		options = govix.VERIFY_SSL_CERT
 	}
 
@@ -88,7 +88,7 @@ func (v *VM) client() (*govix.Host, error) {
 		return nil, err
 	}
 
-	log.Printf("[INFO] VIX client configured for product: VMware %s. SSL: %t", v.Provider, v.VerifySSL)
+	log.Printf("[INFO] VIX client configured for product: VMware %s. SSL: %t", v.provider, v.verifySSL)
 
 	return host, nil
 }
@@ -103,8 +103,8 @@ func (v *VM) SetDefaults() {
 		v.Memory = "512mib"
 	}
 
-	if v.Description == "" {
-		v.Description = "Go's OSX Builder machine"
+	if v.description == "" {
+		v.description = "Go's OSX Builder machine"
 	}
 
 	if v.ToolsInitTimeout.Seconds() <= 0 {
@@ -269,10 +269,10 @@ func (v *VM) Update(vmxFile string) error {
 	log.Printf("[DEBUG] Setting name to %s", v.Name)
 	vm.SetDisplayName(v.Name)
 
-	log.Printf("[DEBUG] Setting description to %s", v.Description)
-	vm.SetAnnotation(v.Description)
+	log.Printf("[DEBUG] Setting description to %s", v.description)
+	vm.SetAnnotation(v.description)
 
-	if v.UpgradeVHardware &&
+	if v.upgradeVHardware &&
 		client.Provider != govix.VMWARE_PLAYER {
 
 		log.Println("[INFO] Upgrading virtual hardware...")
@@ -289,7 +289,7 @@ func (v *VM) Update(vmxFile string) error {
 	}
 
 	log.Println("[INFO] Attaching virtual network adapters...")
-	for _, adapter := range v.VNetworkAdapters {
+	for _, adapter := range v.vNetworkAdapters {
 		adapter.StartConnected = true
 		if adapter.ConnType == govix.NETWORK_BRIDGED {
 			adapter.LinkStatePropagation = true
@@ -309,7 +309,7 @@ func (v *VM) Update(vmxFile string) error {
 	}
 
 	log.Println("[INFO] Attaching CD/DVD drives... ")
-	for _, cdrom := range v.CDDVDDrives {
+	for _, cdrom := range v.cDDVDDrives {
 		err := vm.AttachCDDVD(cdrom)
 		if err != nil {
 			return err
@@ -331,22 +331,22 @@ func (v *VM) Update(vmxFile string) error {
 		return err
 	}
 
-	log.Println("[INFO] Waiting for VMware Tools to initialize...")
+	log.Printf("[INFO] Waiting %s for VMware Tools to initialize...\n", v.ToolsInitTimeout)
 	err = vm.WaitForToolsInGuest(v.ToolsInitTimeout)
 	if err != nil {
 		log.Println("[WARN] VMware Tools took too long to initialize or is not " +
 			"installed.")
 
-		if v.SharedFolders {
+		if v.sharedFolders {
 			log.Println("[WARN] Enabling shared folders is not possible.")
 		}
 		return nil
 	}
 
-	if v.SharedFolders {
+	if v.sharedFolders {
 		log.Println("[DEBUG] Enabling shared folders...")
 
-		err = vm.EnableSharedFolders(v.SharedFolders)
+		err = vm.EnableSharedFolders(v.sharedFolders)
 		if err != nil {
 			return err
 		}
@@ -461,14 +461,17 @@ func (v *VM) Refresh(vmxFile string) error {
 	if err != nil {
 		return err
 	}
-	v.Description, err = vm.Annotation()
+
+	v.description, err = vm.Annotation()
 	if err != nil {
 		return err
 	}
-	v.VNetworkAdapters, err = vm.NetworkAdapters()
+
+	v.vNetworkAdapters, err = vm.NetworkAdapters()
 	if err != nil {
 		return err
 	}
+
 	v.IPAddress, err = vm.IPAddress()
 	if err != nil {
 		return err
