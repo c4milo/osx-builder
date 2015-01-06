@@ -7,9 +7,10 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	govix "github.com/hooklift/govix"
+
 	"github.com/c4milo/go-osx-builder/apperror"
 	"github.com/c4milo/go-osx-builder/config"
-	govix "github.com/hooklift/govix"
 	"github.com/julienschmidt/httprouter"
 	"github.com/satori/go.uuid"
 )
@@ -66,13 +67,13 @@ func CreateVM(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	name := uuid.NewV4()
 
 	vm := &VM{
-		provider:         govix.VMWARE_WORKSTATION,
-		verifySSL:        false,
+		Provider:         govix.VMWARE_WORKSTATION,
+		VerifySSL:        false,
 		Name:             name.String(),
 		Image:            params.OSImage,
 		CPUs:             params.CPUs,
 		Memory:           params.Memory,
-		upgradeVHardware: false,
+		UpgradeVHardware: false,
 		ToolsInitTimeout: params.ToolsInitTimeout,
 		LaunchGUI:        params.LaunchGUI,
 	}
@@ -81,8 +82,8 @@ func CreateVM(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 		ConnType: params.NetType,
 	}
 
-	vm.vNetworkAdapters = make([]*govix.NetworkAdapter, 0, 1)
-	vm.vNetworkAdapters = append(vm.vNetworkAdapters, nic)
+	vm.VNetworkAdapters = make([]*govix.NetworkAdapter, 0, 1)
+	vm.VNetworkAdapters = append(vm.VNetworkAdapters, nic)
 
 	id, err := vm.Create()
 	if err != nil {
@@ -164,8 +165,8 @@ func ListVMs(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// }
 
 	vm := VM{
-		provider:  govix.VMWARE_WORKSTATION,
-		verifySSL: false,
+		Provider:  govix.VMWARE_WORKSTATION,
+		VerifySSL: false,
 	}
 
 	host, err := vm.client()

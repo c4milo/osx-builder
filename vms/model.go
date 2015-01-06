@@ -21,14 +21,14 @@ type VM struct {
 	// VMX file path for Internal use only
 	VMXFile string `json:"-"`
 	// Which VMware VIX service provider to use. ie: fusion, workstation, server, etc
-	provider govix.Provider
+	Provider govix.Provider `json:"-"`
 	// Whether to verify SSL or not for remote connections in ESXi
-	verifySSL bool
+	VerifySSL bool `json:"-"`
 	// Name of the virtual machine
 	Name string `json:"id"`
 	// Description for the virtual machine, it is created as an annotation in
 	// VMware.
-	description string
+	Description string `json:"-"`
 	// Image to use during the creation of this virtual machine
 	Image Image `json:"image"`
 	// Number of virtual cpus
@@ -36,13 +36,13 @@ type VM struct {
 	// Memory size in megabytes.
 	Memory string `json:"memory"`
 	// Whether to upgrade the VM virtual hardware
-	upgradeVHardware bool
+	UpgradeVHardware bool `json:"-"`
 	// The timeout to wait for VMware Tools to be initialized inside the VM
 	ToolsInitTimeout time.Duration `json:"tools_init_timeout"`
 	// Whether to launch the VM with graphical environment
 	LaunchGUI bool `json:"launch_gui"`
 	// Network adapters
-	vNetworkAdapters []*govix.NetworkAdapter
+	VNetworkAdapters []*govix.NetworkAdapter `json:"-"`
 	// VM IP address as reported by VIX
 	IPAddress string `json:"ip_address"`
 	// Power status
@@ -54,12 +54,12 @@ type VM struct {
 // Creates VIX instance with VMware
 func (v *VM) client() (*govix.Host, error) {
 	var options govix.HostOption
-	if v.verifySSL {
+	if v.VerifySSL {
 		options = govix.VERIFY_SSL_CERT
 	}
 
 	host, err := govix.Connect(govix.ConnectConfig{
-		Provider: v.provider,
+		Provider: v.Provider,
 		Options:  options,
 	})
 
@@ -67,7 +67,7 @@ func (v *VM) client() (*govix.Host, error) {
 		return nil, err
 	}
 
-	log.Printf("[INFO] VIX client configured for product: VMware %s. SSL: %t", v.provider, v.verifySSL)
+	log.Printf("[INFO] VIX client configured for product: VMware %s. SSL: %t", v.Provider, v.VerifySSL)
 
 	return host, nil
 }
@@ -82,8 +82,9 @@ func (v *VM) SetDefaults() {
 		v.Memory = "512mib"
 	}
 
-	if v.description == "" {
-		v.description = "Go's OSX Builder machine"
+	if v.Description == "" {
+		//TODO(c4milo): Store image information as description \o/
+		v.Description = "Go's OSX Builder machine"
 	}
 
 	if v.ToolsInitTimeout.Seconds() <= 0 {
@@ -241,10 +242,10 @@ func (v *VM) Update(vmxFile string) error {
 	log.Printf("[DEBUG] Setting name to %s", v.Name)
 	vm.SetDisplayName(v.Name)
 
-	log.Printf("[DEBUG] Setting description to %s", v.description)
-	vm.SetAnnotation(v.description)
+	log.Printf("[DEBUG] Setting description to %s", v.Description)
+	vm.SetAnnotation(v.Description)
 
-	if v.upgradeVHardware &&
+	if v.UpgradeVHardware &&
 		client.Provider != govix.VMWARE_PLAYER {
 
 		log.Println("[INFO] Upgrading virtual hardware...")
@@ -261,7 +262,7 @@ func (v *VM) Update(vmxFile string) error {
 	}
 
 	log.Println("[INFO] Attaching virtual network adapters...")
-	for _, adapter := range v.vNetworkAdapters {
+	for _, adapter := range v.VNetworkAdapters {
 		adapter.StartConnected = true
 		if adapter.ConnType == govix.NETWORK_BRIDGED {
 			adapter.LinkStatePropagation = true
@@ -390,8 +391,8 @@ func FindVM(id string) (*VM, error) {
 func (v *VM) Refresh(vmxFile string) error {
 	log.Printf("[DEBUG] Syncing VM resource %s...", vmxFile)
 
-	v.provider = govix.VMWARE_WORKSTATION
-	v.verifySSL = false
+	v.Provider = govix.VMWARE_WORKSTATION
+	v.VerifySSL = false
 	v.VMXFile = vmxFile
 
 	client, err := v.client()
@@ -432,12 +433,12 @@ func (v *VM) Refresh(vmxFile string) error {
 		return err
 	}
 
-	v.description, err = vm.Annotation()
+	v.Description, err = vm.Annotation()
 	if err != nil {
 		return err
 	}
 
-	v.vNetworkAdapters, err = vm.NetworkAdapters()
+	v.VNetworkAdapters, err = vm.NetworkAdapters()
 	if err != nil {
 		return err
 	}
