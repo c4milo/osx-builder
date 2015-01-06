@@ -16,6 +16,7 @@ import (
 	"github.com/satori/go.uuid"
 )
 
+// Initializes module
 func Init(router *httprouter.Router) {
 	log.Infoln("Initializing vms module...")
 
@@ -25,17 +26,29 @@ func Init(router *httprouter.Router) {
 	router.DELETE("/vms/:id", DestroyVM)
 }
 
+// Defines parameters supported by the CreateVM service
 type CreateVMParams struct {
-	CPUs             uint              `json:"cpus"`
-	Memory           string            `json:"memory"`
-	NetType          govix.NetworkType `json:"network_type"`
-	OSImage          Image             `json:"image"`
-	BootstrapScript  string            `json:"bootstrap_script"`
-	ToolsInitTimeout time.Duration     `json:"tools_init_timeout"`
-	LaunchGUI        bool              `json:"launch_gui"`
-	CallbackURL      string            `json:"callback_url"`
+	// Number of virtual cpus to assign to the VM
+	CPUs uint `json:"cpus"`
+	// Memory for the virtual machine in IEC units. Ex: 1024mib, 1gib, 5120kib,
+	Memory string `json:"memory"`
+	// Network type, either "bridged", "nat" or "hostonly"
+	NetType govix.NetworkType `json:"network_type"`
+	// Guest OS image that is going to be used as Gold image for creating new VMs
+	OSImage Image `json:"image"`
+	// Script to run inside the Guest OS upon first boot
+	BootstrapScript string `json:"bootstrap_script"`
+	// Timeout value for waiting for VMWare Tools to initialize
+	ToolsInitTimeout time.Duration `json:"tools_init_timeout"`
+	// Whether or not to launch the user interface when creating the VM
+	LaunchGUI bool `json:"launch_gui"`
+	// Callback URL to post results once the VM creation process finishes. It
+	// must support POST requests and be ready to receive JSON in the body of
+	// the request.
+	CallbackURL string `json:"callback_url"`
 }
 
+// Invokes callback URL with the results of the creation process
 func sendResult(url string, obj interface{}) {
 	if url == "" {
 		return
@@ -65,6 +78,7 @@ func sendResult(url string, obj interface{}) {
 	}
 }
 
+// Creates a virtual machine with the given parameters
 func CreateVM(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	r := config.Render
 
@@ -139,10 +153,13 @@ func CreateVM(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	r.JSON(w, http.StatusAccepted, vm)
 }
 
+// Defines parameters supported by the DestroyVM service
 type DestroyVMParams struct {
+	// Virtual machine ID to destroy
 	ID string
 }
 
+// Destroys virtual machines by ID
 func DestroyVM(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	r := config.Render
 
@@ -188,10 +205,13 @@ func DestroyVM(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	r.JSON(w, http.StatusNoContent, nil)
 }
 
+// Defines parameters supported by the ListVMs service
 type ListVMsParams struct {
 	Status string
 }
 
+// Returns the list of registered machines in VMWare Fusion/Workstation
+// Due to limitations in VMware VIX, it only returns running machines.
 func ListVMs(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	r := config.Render
 
@@ -232,10 +252,12 @@ func ListVMs(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	r.JSON(w, http.StatusOK, ids)
 }
 
+// Defines parameters supported by the GetVM service
 type GetVMParams struct {
 	ID string
 }
 
+// Returns information of a virtual machine given its ID
 func GetVM(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	r := config.Render
 

@@ -9,13 +9,19 @@ import (
 )
 
 var (
-	Render       *render.Render
-	Port         string
-	VMSPath      string
+	// Render instance to easily serialize and return data to HTTP clients
+	Render *render.Render
+	// Port for HTTP service to bind to
+	Port string
+	// Where all the virtual machines are going to be created
+	VMSPath string
+	// Where all the gold images are going to be cached
 	GoldImgsPath string
-	ImagesPath   string
+	// Where all the raw images are downloaded to
+	ImagesPath string
 )
 
+// Initializes service's configuration
 func init() {
 	Port = os.Getenv("PORT")
 	if Port == "" {

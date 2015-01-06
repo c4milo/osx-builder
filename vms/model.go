@@ -51,7 +51,8 @@ type VM struct {
 	GuestOS string `json:"guest_os"`
 }
 
-// Creates VIX instance with VMware
+// Creates VIX instance with VMware Fusion/Workstation, returning a handle
+// to a VIX Host
 func (v *VM) client() (*govix.Host, error) {
 	var options govix.HostOption
 	if v.VerifySSL {
@@ -92,8 +93,7 @@ func (v *VM) SetDefaults() {
 	}
 }
 
-// Downloads, extracts and opens Gold virtual machine, then it creates a clone
-// out of it.
+// Downloads OS image, creates and launches a virtual machine.
 func (v *VM) Create() (string, error) {
 	log.Printf("[DEBUG] Creating VM resource...")
 
@@ -368,6 +368,7 @@ func (v *VM) Destroy(vmxFile string) error {
 	return vm.Delete(govix.VMDELETE_KEEP_FILES | govix.VMDELETE_FORCE)
 }
 
+// Finds a virtual machine by ID
 func FindVM(id string) (*VM, error) {
 	vmxFile := filepath.Join(config.VMSPath, id, id+".vmx")
 

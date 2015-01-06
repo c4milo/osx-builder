@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/graceful"
 )
 
+// Version string is injected when building the binary from the Makefile.
 var Version string
 
 func main() {
