@@ -29,7 +29,6 @@ dist: build
 
 deps:
 	go get github.com/c4milo/github-release
-	go get github.com/mitchellh/gox
 	go get github.com/satori/go.uuid
 	go get gopkg.in/unrolled/render.v1
 
