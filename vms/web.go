@@ -170,14 +170,26 @@ func ListVMs(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 
 	host, err := vm.client()
 	if err != nil {
-		r.JSON(w, http.StatusInternalServerError, err.Error())
+		log.WithFields(log.Fields{
+			"code":       ErrInternal.Code,
+			"error":      err.Error(),
+			"stacktrace": apperror.GetStacktrace(),
+		}).Error(ErrInternal.Message)
+
+		r.JSON(w, ErrInternal.HTTPStatus, ErrInternal)
 		return
 	}
 	defer host.Disconnect()
 
 	ids, err := host.FindItems(govix.FIND_RUNNING_VMS)
 	if err != nil {
-		r.JSON(w, http.StatusInternalServerError, err.Error())
+		log.WithFields(log.Fields{
+			"code":       ErrInternal.Code,
+			"error":      err.Error(),
+			"stacktrace": apperror.GetStacktrace(),
+		}).Error(ErrInternal.Message)
+
+		r.JSON(w, ErrInternal.HTTPStatus, ErrInternal)
 		return
 	}
 
