@@ -199,7 +199,7 @@ func DestroyVM(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	r.JSON(w, http.StatusOK, vm)
+	r.JSON(w, http.StatusNoContent, nil)
 }
 
 // Defines parameters supported by the GetVM service
