@@ -15,17 +15,12 @@ export CGO_CFLAGS CGO_LDFLAGS DYLD_LIBRARY_PATH LD_LIBRARY_PATH CGO_ENABLED
 build:
 	go build -ldflags "-X main.Version $(VERSION)" -o build/$(NAME)
 
-install:
-	go install -ldflags "-X main.Version $(VERSION)" -v
-
 dist: build
-	$(eval FILES := $(shell ls build))
 	@rm -rf dist && mkdir dist
-	for f in $(FILES); do \
-		(cd $(shell pwd)/build && tar -cvzf ../dist/$${f}_$(VERSION)_$(PLATFORM)_$(ARCH).tar.gz *); \
-		(cd $(shell pwd)/dist && shasum -a 512 $${f}_$(VERSION)_$(PLATFORM)_$(ARCH).tar.gz > $${f}_$(VERSION)_$(PLATFORM)_$(ARCH).tar.gz.sha512); \
-		echo $$f; \
-	done
+	@cp -r vendor/libvix build/libvix
+	@echo "DYLD_LIBRARY_PATH=./libvix LD_LIBRARY_PATH=./libvix ./go-osx-builder" > build/run.sh
+	(cd $(shell pwd)/build && tar -cvzf ../dist/$(NAME)_$(VERSION)_$(PLATFORM)_$(ARCH).tar.gz *); \
+	(cd $(shell pwd)/dist && shasum -a 512 $(NAME)_$(VERSION)_$(PLATFORM)_$(ARCH).tar.gz > $(NAME)_$(VERSION)_$(PLATFORM)_$(ARCH).tar.gz.sha512);
 
 deps:
 	go get github.com/c4milo/github-release
