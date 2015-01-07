@@ -2,9 +2,6 @@
 
 The OSX Builder is a small HTTP API that allows to create and destroy virtual machines in VMWare Fusion or Workstation.
 
-
-# API
-
 ## HTTP response codes
 
 * **202:** Request for creating a virtual machine was accepted
