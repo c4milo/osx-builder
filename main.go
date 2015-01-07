@@ -29,7 +29,7 @@ func main() {
 	log.WithFields(log.Fields{
 		"version": Version,
 		"address": address,
-	}).Infoln("OSX Builder about to start")
+	}).Infoln("OSX Builder service is about to start")
 
 	graceful.Run(address, 10*time.Second, n)
 }

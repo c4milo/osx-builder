@@ -46,7 +46,7 @@ type VM struct {
 	// VM IP address as reported by VIX
 	IPAddress string `json:"ip_address"`
 	// Power status
-	PowerState string `json:"power_state"`
+	Status string `json:"status"`
 	// Guest OS
 	GuestOS string `json:"guest_os"`
 }
@@ -68,7 +68,7 @@ func (v *VM) client() (*govix.Host, error) {
 		return nil, err
 	}
 
-	log.Printf("[INFO] VIX client configured for product: VMware %s. SSL: %t", v.Provider, v.VerifySSL)
+	log.Printf("[INFO] VIX client configured for product: VMware %d. SSL: %t", v.Provider, v.VerifySSL)
 
 	return host, nil
 }
@@ -454,7 +454,7 @@ func (v *VM) Refresh(vmxFile string) error {
 		return err
 	}
 
-	v.PowerState = string(powerState)
+	v.Status = Status(powerState)
 	v.GuestOS, err = vm.GuestOS()
 	if err != nil {
 		return err
@@ -462,4 +462,49 @@ func (v *VM) Refresh(vmxFile string) error {
 
 	log.Printf("[DEBUG] Finished syncing VM %s...", vmxFile)
 	return nil
+}
+
+// Resolves power state bitwise flags to more user friendly strings
+func Status(s govix.VMPowerState) string {
+	blockedOnMsg := ",blocked"
+	toolsRunning := ",tools-running"
+	status := "unknown"
+
+	if (s & govix.POWERSTATE_POWERING_OFF) != 0 {
+		status = "powering-off"
+	}
+
+	if (s & govix.POWERSTATE_POWERED_OFF) != 0 {
+		status = "powered-off"
+	}
+
+	if (s & govix.POWERSTATE_POWERING_ON) != 0 {
+		status = "powering-on"
+	}
+
+	if (s & govix.POWERSTATE_POWERED_ON) != 0 {
+		status = "powered-on"
+	}
+
+	if (s & govix.POWERSTATE_SUSPENDING) != 0 {
+		status = "suspending"
+	}
+
+	if (s & govix.POWERSTATE_SUSPENDED) != 0 {
+		status = "suspended"
+	}
+
+	if (s & govix.POWERSTATE_RESETTING) != 0 {
+		status = "resetting"
+	}
+
+	if (s & govix.POWERSTATE_TOOLS_RUNNING) != 0 {
+		status += toolsRunning
+	}
+
+	if (s & govix.POWERSTATE_BLOCKED_ON_MSG) != 0 {
+		status += blockedOnMsg
+	}
+
+	return status
 }
