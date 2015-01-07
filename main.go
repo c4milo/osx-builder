@@ -1,8 +1,6 @@
 package main
 
 import (
-	"time"
-
 	log "github.com/Sirupsen/logrus"
 
 	"github.com/c4milo/go-osx-builder/config"
@@ -10,7 +8,6 @@ import (
 	"github.com/codegangsta/negroni"
 	"github.com/julienschmidt/httprouter"
 	"github.com/meatballhat/negroni-logrus"
-	"github.com/stretchr/graceful"
 )
 
 // Version string is injected when building the binary from the Makefile.
@@ -31,5 +28,5 @@ func main() {
 		"address": address,
 	}).Infoln("OSX Builder service is about to start")
 
-	graceful.Run(address, 10*time.Second, n)
+	n.Run(address)
 }

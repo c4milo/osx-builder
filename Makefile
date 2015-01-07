@@ -33,7 +33,6 @@ deps:
 	go get github.com/c4milo/unzipit
 	go get github.com/hooklift/govmx
 	go get github.com/dustin/go-humanize
-	go get github.com/stretchr/graceful
 	mkdir -p $GOPATH/src/github.com/hooklift/govix && git clone https://github.com/hooklift/govix.git $GOPATH/src/github.com/hooklift/govix
 
 release: dist
