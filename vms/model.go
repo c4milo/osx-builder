@@ -187,7 +187,9 @@ func (v *VM) Update(vmxFile string) error {
 	if err != nil {
 		return err
 	}
-	defer client.Disconnect()
+	// Commenting for now as the govix.Host finalizer seems to be kicking in
+	// just fine.
+	//defer client.Disconnect()
 
 	if client.Provider == govix.VMWARE_VI_SERVER ||
 		client.Provider == govix.VMWARE_SERVER {
