@@ -135,8 +135,6 @@ Once the creation process finishes, the following properties are going to be pop
 ```
 
 ## Caveats:
-* There are sporadic crashes when creating virtual machines, this seems to be an issue within govix.
-
 * VMWare VIX handles internal locking to avoid corruption of virtual machine files. If there is an attempt to get VM information when the VM is locked, you may get properties with empty values.
 
 * In case you provide a callback URL, once it is called, there is not guarantee you will receive an IP Address as this will depend on IP acquisition timing.
