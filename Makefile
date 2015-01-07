@@ -6,7 +6,7 @@ DYLD_LIBRARY_PATH	:=$(CURDIR)/vendor/libvix
 LD_LIBRARY_PATH		:=$(CURDIR)/vendor/libvix
 
 NAME 		:= go-osx-builder
-VERSION 	:= v1.0.0
+VERSION 	:= v1.1.0
 PLATFORM 	:= $(shell go env | grep GOHOSTOS | cut -d '"' -f 2)
 ARCH 		:= $(shell go env | grep GOARCH | cut -d '"' -f 2)
 
