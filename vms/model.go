@@ -139,7 +139,7 @@ func (v *VM) Create() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer client.Disconnect()
+	//defer client.Disconnect()
 
 	log.Printf("[INFO] Opening Gold virtual machine from %s", vmxFile)
 
@@ -339,7 +339,7 @@ func (v *VM) Destroy(vmxFile string) error {
 	if err != nil {
 		return err
 	}
-	defer client.Disconnect()
+	// defer client.Disconnect()
 
 	vm, err := client.OpenVM(vmxFile, v.Image.Password)
 	if err != nil {
@@ -414,7 +414,7 @@ func (v *VM) Refresh(vmxFile string) error {
 	if err != nil {
 		return err
 	}
-	defer client.Disconnect()
+	//defer client.Disconnect()
 
 	log.Printf("[DEBUG] Opening VM %s...", vmxFile)
 	vm, err := client.OpenVM(vmxFile, v.Image.Password)
