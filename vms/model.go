@@ -365,7 +365,19 @@ func (v *VM) Destroy(vmxFile string) error {
 		}
 	}
 
-	return vm.Delete(govix.VMDELETE_KEEP_FILES | govix.VMDELETE_FORCE)
+	log.Println("[DEBUG] Asking VIX to delete the VM...")
+	err = vm.Delete(govix.VMDELETE_KEEP_FILES | govix.VMDELETE_FORCE)
+	if err != nil {
+		return err
+	}
+
+	if v.ID != "" {
+		os.RemoveAll(filepath.Join(config.VMSPath, v.ID))
+	}
+
+	log.Printf("[DEBUG] VM %s Destroyed.\n", vmxFile)
+
+	return nil
 }
 
 // Finds a virtual machine by ID
