@@ -142,7 +142,7 @@ func (v *VM) Create() (string, error) {
 		os.RemoveAll(vmFolder)
 
 		log.Printf("[INFO] Cloning Gold virtual machine into %s...", newvmx)
-		_, err := vm.Clone(govix.CLONETYPE_FULL, newvmx)
+		_, err := vm.Clone(govix.CLONETYPE_LINKED, newvmx)
 
 		// If there is an error and the error is other than "The snapshot already exists"
 		// then return the error
