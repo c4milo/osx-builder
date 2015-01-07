@@ -202,7 +202,7 @@ func DestroyVM(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 		return
 	}
 
-	r.JSON(w, http.StatusNoContent, nil)
+	r.JSON(w, http.StatusOK, vm)
 }
 
 // Defines parameters supported by the ListVMs service
