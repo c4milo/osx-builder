@@ -46,9 +46,7 @@ type VM struct {
 	GuestOS string `json:"guest_os"`
 }
 
-// Creates VIX instance with VMware Fusion/Workstation, returning a handle
-// to a VIX Host
-
+// Keeps a reference to a VMWare host connection
 var VMwareClient *govix.Host
 
 func init() {
