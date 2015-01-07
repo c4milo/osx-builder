@@ -21,7 +21,6 @@ func Init(router *httprouter.Router) {
 	log.Infoln("Initializing vms module...")
 
 	router.POST("/vms", CreateVM)
-	//router.GET("/vms", ListVMs)
 	router.GET("/vms/:id", GetVM)
 	router.DELETE("/vms/:id", DestroyVM)
 }
@@ -111,8 +110,6 @@ func CreateVM(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	id := uuid.NewV4()
 
 	vm := &VM{
-		Provider:         govix.VMWARE_WORKSTATION,
-		VerifySSL:        false,
 		ID:               id.String(),
 		Image:            params.OSImage,
 		CPUs:             params.CPUs,
@@ -203,53 +200,6 @@ func DestroyVM(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	}
 
 	r.JSON(w, http.StatusOK, vm)
-}
-
-// Defines parameters supported by the ListVMs service
-type ListVMsParams struct {
-	Status string
-}
-
-// Returns the list of registered machines in VMWare Fusion/Workstation
-// Due to limitations in VMware VIX, it only returns running machines.
-func ListVMs(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	r := config.Render
-
-	// params := ListVMsParams{
-	// 	Status: req.URL.Query().Get("status"),
-	// }
-
-	vm := VM{
-		Provider:  govix.VMWARE_WORKSTATION,
-		VerifySSL: false,
-	}
-
-	host, err := vm.client()
-	if err != nil {
-		log.WithFields(log.Fields{
-			"code":       ErrInternal.Code,
-			"error":      err.Error(),
-			"stacktrace": apperror.GetStacktrace(),
-		}).Error(ErrInternal.Message)
-
-		r.JSON(w, ErrInternal.HTTPStatus, ErrInternal)
-		return
-	}
-	defer host.Disconnect()
-
-	ids, err := host.FindItems(govix.FIND_RUNNING_VMS)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"code":       ErrInternal.Code,
-			"error":      err.Error(),
-			"stacktrace": apperror.GetStacktrace(),
-		}).Error(ErrInternal.Message)
-
-		r.JSON(w, ErrInternal.HTTPStatus, ErrInternal)
-		return
-	}
-
-	r.JSON(w, http.StatusOK, ids)
 }
 
 // Defines parameters supported by the GetVM service

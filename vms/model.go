@@ -22,10 +22,6 @@ import (
 type VM struct {
 	// VMX file path for Internal use only
 	VMXFile string `json:"-"`
-	// Which VMware VIX service provider to use. ie: fusion, workstation, server, etc
-	Provider govix.Provider `json:"-"`
-	// Whether to verify SSL or not for remote connections in ESXi
-	VerifySSL bool `json:"-"`
 	// ID of the virtual machine
 	ID string `json:"id"`
 	// Image to use during the creation of this virtual machine
@@ -52,24 +48,22 @@ type VM struct {
 
 // Creates VIX instance with VMware Fusion/Workstation, returning a handle
 // to a VIX Host
-func (v *VM) client() (*govix.Host, error) {
-	var options govix.HostOption
-	if v.VerifySSL {
-		options = govix.VERIFY_SSL_CERT
-	}
 
+var VMwareClient *govix.Host
+
+func init() {
+	fmt.Printf("[INFO] Connecting to VMware...")
 	host, err := govix.Connect(govix.ConnectConfig{
-		Provider: v.Provider,
-		Options:  options,
+		Provider: govix.VMWARE_WORKSTATION,
 	})
 
 	if err != nil {
-		return nil, err
+		log.Fatalln(err.Error())
 	}
 
-	log.Printf("[INFO] VIX client configured for product: VMware %d. SSL: %t", v.Provider, v.VerifySSL)
+	fmt.Println(" OK")
 
-	return host, nil
+	VMwareClient = host
 }
 
 // Sets default values for VM attributes
@@ -134,16 +128,8 @@ func (v *VM) Create() (string, error) {
 	vmxFile := files[0]
 	log.Printf("[DEBUG] Gold virtual machine vmx file found %v", vmxFile)
 
-	// Gets VIX instance
-	client, err := v.client()
-	if err != nil {
-		return "", err
-	}
-	//defer client.Disconnect()
-
 	log.Printf("[INFO] Opening Gold virtual machine from %s", vmxFile)
-
-	vm, err := client.OpenVM(vmxFile, v.Image.Password)
+	vm, err := VMwareClient.OpenVM(vmxFile, v.Image.Password)
 	if err != nil {
 		return "", err
 	}
@@ -182,27 +168,9 @@ func (v *VM) Update(vmxFile string) error {
 	// invalid values
 	v.SetDefaults()
 
-	// Gets VIX instance
-	client, err := v.client()
-	if err != nil {
-		return err
-	}
-	// Commenting for now as the govix.Host finalizer seems to be kicking in
-	// just fine.
-	//defer client.Disconnect()
-
-	if client.Provider == govix.VMWARE_VI_SERVER ||
-		client.Provider == govix.VMWARE_SERVER {
-		log.Printf("[INFO] Registering VM in host's inventory...")
-		err = client.RegisterVM(vmxFile)
-		if err != nil {
-			return err
-		}
-	}
-
 	log.Printf("[INFO] Opening virtual machine from %s", vmxFile)
 
-	vm, err := client.OpenVM(vmxFile, v.Image.Password)
+	vm, err := VMwareClient.OpenVM(vmxFile, v.Image.Password)
 	if err != nil {
 		return err
 	}
@@ -247,9 +215,7 @@ func (v *VM) Update(vmxFile string) error {
 	// interpreted by VMWare as corrupted.
 	vm.SetAnnotation(base64.StdEncoding.EncodeToString(imageJSON))
 
-	if v.UpgradeVHardware &&
-		client.Provider != govix.VMWARE_PLAYER {
-
+	if v.UpgradeVHardware {
 		log.Println("[INFO] Upgrading virtual hardware...")
 		err = vm.UpgradeVHardware()
 		if err != nil {
@@ -335,13 +301,7 @@ func powerOff(vm *govix.VM) error {
 func (v *VM) Destroy(vmxFile string) error {
 	log.Printf("[DEBUG] Destroying VM resource %s...", vmxFile)
 
-	client, err := v.client()
-	if err != nil {
-		return err
-	}
-	// defer client.Disconnect()
-
-	vm, err := client.OpenVM(vmxFile, v.Image.Password)
+	vm, err := VMwareClient.OpenVM(vmxFile, v.Image.Password)
 	if err != nil {
 		return err
 	}
@@ -357,22 +317,13 @@ func (v *VM) Destroy(vmxFile string) error {
 		}
 	}
 
-	if client.Provider == govix.VMWARE_VI_SERVER ||
-		client.Provider == govix.VMWARE_SERVER {
-		log.Printf("[INFO] Unregistering VM from host's inventory...")
-
-		err := client.UnregisterVM(vmxFile)
-		if err != nil {
-			return err
-		}
-	}
-
 	log.Println("[DEBUG] Asking VIX to delete the VM...")
-	err = vm.Delete(govix.VMDELETE_KEEP_FILES | govix.VMDELETE_FORCE)
+	err = vm.Delete(govix.VMDELETE_DISK_FILES | govix.VMDELETE_FORCE)
 	if err != nil {
 		return err
 	}
 
+	// Just in case as we don't really know what VIX is doing under the hood
 	if v.ID != "" {
 		os.RemoveAll(filepath.Join(config.VMSPath, v.ID))
 	}
@@ -406,18 +357,10 @@ func FindVM(id string) (*VM, error) {
 func (v *VM) Refresh(vmxFile string) error {
 	log.Printf("[DEBUG] Syncing VM resource %s...", vmxFile)
 
-	v.Provider = govix.VMWARE_WORKSTATION
-	v.VerifySSL = false
 	v.VMXFile = vmxFile
 
-	client, err := v.client()
-	if err != nil {
-		return err
-	}
-	//defer client.Disconnect()
-
 	log.Printf("[DEBUG] Opening VM %s...", vmxFile)
-	vm, err := client.OpenVM(vmxFile, v.Image.Password)
+	vm, err := VMwareClient.OpenVM(vmxFile, v.Image.Password)
 	if err != nil {
 		return err
 	}
