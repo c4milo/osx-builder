@@ -108,12 +108,12 @@ func CreateVM(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 		return
 	}
 
-	name := uuid.NewV4()
+	id := uuid.NewV4()
 
 	vm := &VM{
 		Provider:         govix.VMWARE_WORKSTATION,
 		VerifySSL:        false,
-		Name:             name.String(),
+		ID:               id.String(),
 		Image:            params.OSImage,
 		CPUs:             params.CPUs,
 		Memory:           params.Memory,

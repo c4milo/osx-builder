@@ -1,6 +1,8 @@
 package vms
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -24,11 +26,8 @@ type VM struct {
 	Provider govix.Provider `json:"-"`
 	// Whether to verify SSL or not for remote connections in ESXi
 	VerifySSL bool `json:"-"`
-	// Name of the virtual machine
-	Name string `json:"id"`
-	// Description for the virtual machine, it is created as an annotation in
-	// VMware.
-	Description string `json:"-"`
+	// ID of the virtual machine
+	ID string `json:"id"`
 	// Image to use during the creation of this virtual machine
 	Image Image `json:"image"`
 	// Number of virtual cpus
@@ -81,11 +80,6 @@ func (v *VM) SetDefaults() {
 
 	if v.Memory == "" {
 		v.Memory = "512mib"
-	}
-
-	if v.Description == "" {
-		//TODO(c4milo): Store image information as description \o/
-		v.Description = "Go's OSX Builder machine"
 	}
 
 	if v.ToolsInitTimeout.Seconds() <= 0 {
@@ -154,8 +148,8 @@ func (v *VM) Create() (string, error) {
 		return "", err
 	}
 
-	vmFolder := filepath.Join(config.VMSPath, v.Name)
-	newvmx := filepath.Join(config.VMSPath, v.Name, v.Name+".vmx")
+	vmFolder := filepath.Join(config.VMSPath, v.ID)
+	newvmx := filepath.Join(config.VMSPath, v.ID, v.ID+".vmx")
 
 	if _, err = os.Stat(newvmx); os.IsNotExist(err) {
 		log.Printf("[INFO] Virtual machine clone not found: %s, err: %+v", newvmx, err)
@@ -239,11 +233,17 @@ func (v *VM) Update(vmxFile string) error {
 	log.Printf("[DEBUG] Setting vcpus to %d", v.CPUs)
 	vm.SetNumberVcpus(v.CPUs)
 
-	log.Printf("[DEBUG] Setting name to %s", v.Name)
-	vm.SetDisplayName(v.Name)
+	log.Printf("[DEBUG] Setting ID to %s", v.ID)
+	vm.SetDisplayName(v.ID)
 
-	log.Printf("[DEBUG] Setting description to %s", v.Description)
-	vm.SetAnnotation(v.Description)
+	imageJSON, err := json.Marshal(v.Image)
+	if err != nil {
+		return err
+	}
+
+	// We need to encode the JSON data in base64 so that the VMX file is not
+	// interpreted by VMWare as corrupted.
+	vm.SetAnnotation(base64.StdEncoding.EncodeToString(imageJSON))
 
 	if v.UpgradeVHardware &&
 		client.Provider != govix.VMWARE_PLAYER {
@@ -429,15 +429,27 @@ func (v *VM) Refresh(vmxFile string) error {
 	v.Memory = strings.ToLower(humanize.IBytes(uint64(memory)))
 	v.CPUs = uint(vcpus)
 
-	v.Name, err = vm.DisplayName()
+	v.ID, err = vm.DisplayName()
 	if err != nil {
 		return err
 	}
 
-	v.Description, err = vm.Annotation()
+	imageJSONBase64, err := vm.Annotation()
 	if err != nil {
 		return err
 	}
+
+	imageJSON, err := base64.StdEncoding.DecodeString(imageJSONBase64)
+	if err != nil {
+		return err
+	}
+
+	var image Image
+	err = json.Unmarshal(imageJSON, &image)
+	if err != nil {
+		return err
+	}
+	v.Image = image
 
 	v.VNetworkAdapters, err = vm.NetworkAdapters()
 	if err != nil {
