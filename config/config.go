@@ -4,13 +4,9 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
-
-	"gopkg.in/unrolled/render.v1"
 )
 
 var (
-	// Render instance to easily serialize and return data to HTTP clients
-	Render *render.Render
 	// Port for HTTP service to bind to
 	Port string
 	// Where all the virtual machines are going to be created
@@ -28,16 +24,12 @@ func init() {
 		Port = "12345"
 	}
 
-	Render = render.New(render.Options{
-		IndentJSON: true,
-	})
-
 	usr, err := user.Current()
 	if err != nil {
 		panic(err)
 	}
 
-	basePath := filepath.Join(usr.HomeDir, ".go-osx-builder", "vix")
+	basePath := filepath.Join(usr.HomeDir, ".osx-builder")
 	VMSPath = filepath.Join(basePath, "vms")
 	GoldImgsPath = filepath.Join(basePath, "gold")
 	ImagesPath = filepath.Join(basePath, "images")

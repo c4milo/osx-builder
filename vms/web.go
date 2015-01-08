@@ -2,27 +2,25 @@ package vms
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"path"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
-	govix "github.com/hooklift/govix"
+	"github.com/c4milo/osx-builder/apperror"
+	"github.com/c4milo/osx-builder/pkg/render"
 
-	"github.com/c4milo/go-osx-builder/apperror"
-	"github.com/c4milo/go-osx-builder/config"
-	"github.com/julienschmidt/httprouter"
-	"github.com/satori/go.uuid"
+	govix "github.com/hooklift/govix"
 )
 
-// Initializes module
-func Init(router *httprouter.Router) {
-	log.Infoln("Initializing vms module...")
-
-	router.POST("/vms", CreateVM)
-	router.GET("/vms/:id", GetVM)
-	router.DELETE("/vms/:id", DestroyVM)
+var Handlers map[string]func(http.ResponseWriter, *http.Request) = map[string]func(http.ResponseWriter, *http.Request){
+	"POST":   CreateVM,
+	"GET":    GetVM,
+	"DELETE": DestroyVM,
 }
 
 // Defines parameters supported by the CreateVM service
@@ -47,19 +45,15 @@ type CreateVMParams struct {
 	CallbackURL string `json:"callback_url"`
 }
 
-// Invokes callback URL with the results of the creation process
-func sendResult(url string, obj interface{}) {
+// Invokes callback URL with results of the creation process
+func sendResult(url string, value interface{}) {
 	if url == "" {
 		return
 	}
-	data, err := json.Marshal(obj)
+	data, err := json.Marshal(value)
 	if err != nil {
-		log.WithFields(log.Fields{
-			"vm":         obj,
-			"code":       ErrCreatingVM.Code,
-			"error":      err.Error(),
-			"stacktrace": apperror.GetStacktrace(),
-		}).Error(ErrCbURL.Message)
+		log.Printf(`[ERROR] msg="%s" value=%+v code=%s error="%s" stacktrace=%s\n`,
+			ErrCbURL.Message, value, ErrCbURL.Code, err.Error(), apperror.GetStacktrace())
 
 		data, err = json.Marshal(ErrCbURL)
 		if err != nil {
@@ -68,49 +62,56 @@ func sendResult(url string, obj interface{}) {
 	}
 	_, err = http.Post(url, "application/json", bytes.NewBuffer(data))
 	if err != nil {
-		log.WithFields(log.Fields{
-			"vm":         obj,
-			"code":       ErrCbURL.Code,
-			"error":      err.Error(),
-			"stacktrace": apperror.GetStacktrace(),
-		}).Error(ErrCbURL.Message)
+		log.Printf(`[ERROR] msg="%s" value=%+v code=%s error="%s" stacktrace=%s\n`,
+			ErrCbURL.Message, value, ErrCbURL.Code, err.Error(), apperror.GetStacktrace())
 	}
 }
 
 // Creates a virtual machine with the given parameters
-func CreateVM(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	r := config.Render
-
+func CreateVM(w http.ResponseWriter, req *http.Request) {
 	var params CreateVMParams
 	body, err := ioutil.ReadAll(req.Body)
 
 	if err != nil {
-		log.WithFields(log.Fields{
-			"code":       ErrReadingReqBody.Code,
-			"error":      err.Error(),
-			"stacktrace": apperror.GetStacktrace(),
-		}).Error(ErrReadingReqBody.Message)
+		log.Printf(`[ERROR] msg="%s" code=%s error="%s" stacktrace=%s\n`,
+			ErrReadingReqBody.Message, ErrReadingReqBody.Code, err.Error(), apperror.GetStacktrace())
 
-		r.JSON(w, ErrReadingReqBody.HTTPStatus, ErrReadingReqBody)
+		render.JSON(w, render.Options{
+			Status: ErrReadingReqBody.HTTPStatus,
+			Data:   ErrReadingReqBody,
+		})
 		return
 	}
 
 	err = json.Unmarshal(body, &params)
 	if err != nil {
-		log.WithFields(log.Fields{
-			"code":       ErrParsingJSON.Code,
-			"error":      err.Error(),
-			"stacktrace": apperror.GetStacktrace(),
-		}).Error(ErrParsingJSON.Message)
+		log.Printf(`[ERROR] msg="%s" code=%s error="%s" stacktrace=%s\n`,
+			ErrParsingJSON.Message, ErrParsingJSON.Code, err.Error(), apperror.GetStacktrace())
 
-		r.JSON(w, ErrParsingJSON.HTTPStatus, ErrParsingJSON)
+		render.JSON(w, render.Options{
+			Status: ErrParsingJSON.HTTPStatus,
+			Data:   ErrParsingJSON,
+		})
 		return
 	}
 
-	id := uuid.NewV4()
+	b := make([]byte, 10)
+	_, err = rand.Read(b)
+	if err != nil {
+		log.Printf(`[ERROR] msg="%s" code=%s error="%s" stacktrace=%s\n`,
+			ErrInternal.Message, ErrInternal.Code, err.Error(), apperror.GetStacktrace())
+
+		render.JSON(w, render.Options{
+			Status: ErrInternal.HTTPStatus,
+			Data:   ErrInternal,
+		})
+		return
+	}
+
+	id := fmt.Sprintf("%x", b)
 
 	vm := &VM{
-		ID:               id.String(),
+		ID:               id,
 		Image:            params.OSImage,
 		CPUs:             params.CPUs,
 		Memory:           params.Memory,
@@ -127,27 +128,26 @@ func CreateVM(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	vm.VNetworkAdapters = append(vm.VNetworkAdapters, nic)
 
 	go func() {
-		id, err := vm.Create()
+		vmxfile, err := vm.Create()
 		if err != nil {
-			log.WithFields(log.Fields{
-				"vm":         vm,
-				"code":       ErrCreatingVM.Code,
-				"error":      err.Error(),
-				"stacktrace": apperror.GetStacktrace(),
-			}).Error(ErrCreatingVM.Message)
+			log.Printf(`[ERROR] msg="%s" value=%+v code=%s error="%s" stacktrace=%s\n`,
+				ErrCreatingVM.Message, vm, ErrCreatingVM.Code, err.Error(), apperror.GetStacktrace())
 
 			sendResult(params.CallbackURL, ErrCreatingVM)
 			return
 		}
 
 		if vm.IPAddress == "" {
-			vm.Refresh(id)
+			vm.Refresh(vmxfile)
 		}
 
 		sendResult(params.CallbackURL, vm)
 	}()
 
-	r.JSON(w, http.StatusAccepted, vm)
+	render.JSON(w, render.Options{
+		Status: http.StatusAccepted,
+		Data:   vm,
+	})
 }
 
 // Defines parameters supported by the DestroyVM service
@@ -157,49 +157,49 @@ type DestroyVMParams struct {
 }
 
 // Destroys virtual machines by ID
-func DestroyVM(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	r := config.Render
-
+func DestroyVM(w http.ResponseWriter, req *http.Request) {
 	params := DestroyVMParams{
-		ID: ps.ByName("id"),
+		ID: path.Base(req.URL.Path),
 	}
 
 	vm, err := FindVM(params.ID)
 	if err != nil {
-		log.WithFields(log.Fields{
-			"code":       ErrOpeningVM.Code,
-			"error":      err.Error(),
-			"stacktrace": apperror.GetStacktrace(),
-		}).Error(ErrOpeningVM.Message)
+		log.Printf(`[ERROR] msg="%s" code=%s error="%s" stacktrace=%s\n`,
+			ErrOpeningVM.Message, ErrOpeningVM.Code, err.Error(), apperror.GetStacktrace())
 
-		r.JSON(w, ErrOpeningVM.HTTPStatus, ErrOpeningVM)
+		render.JSON(w, render.Options{
+			Status: ErrOpeningVM.HTTPStatus,
+			Data:   ErrOpeningVM,
+		})
 		return
 	}
 
 	if vm == nil {
-		log.WithFields(log.Fields{
-			"code":       ErrVMNotFound.Code,
-			"error":      "",
-			"stacktrace": "",
-		}).Error(ErrVMNotFound.Message)
+		log.Printf(`[ERROR] msg="%s" code=%s\n`,
+			ErrVMNotFound.Message, ErrOpeningVM.Code)
 
-		r.JSON(w, ErrVMNotFound.HTTPStatus, ErrVMNotFound)
+		render.JSON(w, render.Options{
+			Status: ErrVMNotFound.HTTPStatus,
+			Data:   ErrVMNotFound,
+		})
 		return
 	}
 
 	err = vm.Destroy(vm.VMXFile)
 	if err != nil {
-		log.WithFields(log.Fields{
-			"code":       ErrInternal.Code,
-			"error":      err.Error(),
-			"stacktrace": apperror.GetStacktrace(),
-		}).Error(ErrInternal.Message)
+		log.Printf(`[ERROR] msg="%s" code=%s error="%s" stacktrace=%s\n`,
+			ErrInternal.Message, ErrInternal.Code, err.Error(), apperror.GetStacktrace())
 
-		r.JSON(w, ErrInternal.HTTPStatus, ErrInternal)
+		render.JSON(w, render.Options{
+			Status: ErrInternal.HTTPStatus,
+			Data:   ErrInternal,
+		})
 		return
 	}
 
-	r.JSON(w, http.StatusNoContent, nil)
+	render.JSON(w, render.Options{
+		Status: http.StatusNoContent,
+	})
 }
 
 // Defines parameters supported by the GetVM service
@@ -208,36 +208,37 @@ type GetVMParams struct {
 }
 
 // Returns information of a virtual machine given its ID
-func GetVM(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	r := config.Render
-
+func GetVM(w http.ResponseWriter, req *http.Request) {
 	params := GetVMParams{
-		ID: ps.ByName("id"),
+		ID: path.Base(req.URL.Path),
 	}
 
 	vm, err := FindVM(params.ID)
 
 	if err != nil {
-		log.WithFields(log.Fields{
-			"code":       ErrOpeningVM.Code,
-			"error":      err.Error(),
-			"stacktrace": apperror.GetStacktrace(),
-		}).Error(ErrOpeningVM.Message)
+		log.Printf(`[ERROR] msg="%s" code=%s error="%s" stacktrace=%s\n`,
+			ErrOpeningVM.Message, ErrOpeningVM.Code, err.Error(), apperror.GetStacktrace())
 
-		r.JSON(w, ErrOpeningVM.HTTPStatus, ErrOpeningVM)
+		render.JSON(w, render.Options{
+			Status: ErrOpeningVM.HTTPStatus,
+			Data:   ErrOpeningVM,
+		})
 		return
 	}
 
 	if vm == nil {
-		log.WithFields(log.Fields{
-			"code":       ErrVMNotFound.Code,
-			"error":      "",
-			"stacktrace": "",
-		}).Error(ErrVMNotFound.Message)
+		log.Printf(`[ERROR] msg="%s" code=%s\n`,
+			ErrVMNotFound.Message, ErrOpeningVM.Code)
 
-		r.JSON(w, ErrVMNotFound.HTTPStatus, ErrVMNotFound)
+		render.JSON(w, render.Options{
+			Status: ErrVMNotFound.HTTPStatus,
+			Data:   ErrVMNotFound,
+		})
 		return
 	}
 
-	r.JSON(w, http.StatusOK, vm)
+	render.JSON(w, render.Options{
+		Status: http.StatusOK,
+		Data:   vm,
+	})
 }

@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/c4milo/go-osx-builder/config"
-	"github.com/c4milo/unzipit"
+	"github.com/c4milo/osx-builder/config"
+	"github.com/c4milo/osx-builder/pkg/unzipit"
 	"github.com/dustin/go-humanize"
 	govix "github.com/hooklift/govix"
 )
