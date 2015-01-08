@@ -1,16 +1,7 @@
-CGO_ENABLED     := 1
-CGO_CFLAGS              :=-I$(CURDIR)/vendor/libvix/include -Werror
-CGO_LDFLAGS             :=-L$(CURDIR)/vendor/libvix -lvixAllProducts -ldl -lpthread
-
-DYLD_LIBRARY_PATH       :=$(CURDIR)/vendor/libvix
-LD_LIBRARY_PATH         :=$(CURDIR)/vendor/libvix
-
 NAME 		:= osx-builder
 VERSION 	:= v1.0.0
 PLATFORM 	:= $(shell go env | grep GOHOSTOS | cut -d '"' -f 2)
 ARCH 		:= $(shell go env | grep GOARCH | cut -d '"' -f 2)
-
-export CGO_CFLAGS CGO_LDFLAGS DYLD_LIBRARY_PATH LD_LIBRARY_PATH CGO_ENABLED
 
 build:
 	go build -ldflags "-X main.Version $(VERSION)" -o build/$(NAME)
