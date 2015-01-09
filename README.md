@@ -27,7 +27,7 @@ Creates virtual machines asynchronously from an existing VMware virtual machine.
 * **Method:** `POST`
 * **Consumes:** `application/json`
 * **Produces:** `application/json`
- 
+
 **Body**
 
 ```json
@@ -40,7 +40,7 @@ Creates virtual machines asynchronously from an existing VMware virtual machine.
 		"checksum": "5cf00d380e28d02f30efaceafef7c7c8bdedae33",
 		"checksum_type": "sha1"
 	},
-	"launch_gui": true,
+	"headless": true,
 	"callback_url": "http://foo.com/myscript",
 }
 ```
@@ -82,7 +82,7 @@ Memory has to be specified in IEC units. Example: 1gib, 1024mib, 1048576kib
   "cpus": 2,
   "memory": "1024mib",
   "tools_init_timeout": 0,
-  "launch_gui": true,
+  "headless": true,
   "ip_address": "",
   "status": "",
   "guest_os": ""
@@ -91,7 +91,7 @@ Memory has to be specified in IEC units. Example: 1gib, 1024mib, 1048576kib
 
 Upon creation, you can either wait for your callback URL to be called by means of a POST method, or pull the VM information from time to time until you get back the rest of the information.
 
-Once the creation process finishes, the following properties are going to be populated: 
+Once the creation process finishes, the following properties are going to be populated:
 
 * ip_address
 * status
@@ -117,7 +117,7 @@ Once the creation process finishes, the following properties are going to be pop
   "cpus": 2,
   "memory": "1.0gib",
   "tools_init_timeout": 0,
-  "launch_gui": false,
+  "headless": false,
   "ip_address": "192.168.123.147",
   "status": "powered-on",
   "guest_os": "other26xlinux-64"
