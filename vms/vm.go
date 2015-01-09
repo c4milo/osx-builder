@@ -154,7 +154,8 @@ func (v *VM) Update() error {
 	}
 
 	info := &vmware.VMInfo{
-		MemorySize: v.Memory,
+		//hacky way of making sure it is a multiple of 4 megabytes
+		MemorySize: (v.Memory + 3) & ^0x03,
 		CPUs:       v.CPUs,
 		Name:       v.ID,
 	}
