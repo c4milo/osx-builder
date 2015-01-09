@@ -1,9 +1,8 @@
 NAME 		:= osx-builder
-VERSION 	:= v1.0.0
 PLATFORM 	:= $(shell go env | grep GOHOSTOS | cut -d '"' -f 2)
 ARCH 		:= $(shell go env | grep GOARCH | cut -d '"' -f 2)
 BRANCH		:= $(shell git rev-parse --abbrev-ref HEAD)
-VERSION 	:= v1.0.0
+VERSION 	:= v1.0.0-nocgo
 
 build:
 	go build -ldflags "-X main.Version $(VERSION)" -o build/$(NAME)
