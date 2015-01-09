@@ -27,7 +27,7 @@ type VMConfig struct {
 	// Network adapters
 	Network vmware.NetworkType `json:"network_type"`
 	// Whether to launch the VM with graphical environment
-	GUI bool `json:"gui"`
+	Headless bool `json:"headless"`
 }
 
 type VM struct {
@@ -179,7 +179,7 @@ func (v *VM) Update() error {
 	}
 
 	log.Println("[INFO] Powering virtual machine on...")
-	err = v.vmwareVM.Start(v.GUI)
+	err = v.vmwareVM.Start(v.Headless)
 	if err != nil {
 		return err
 	}
@@ -233,7 +233,6 @@ func FindVM(id string) (*VM, error) {
 
 // Refreshes state with VMware
 func (v *VM) Refresh() error {
-
 	log.Printf("[DEBUG] Refreshing state with VMWare...")
 	info, err := v.vmwareVM.Info()
 	if err != nil {

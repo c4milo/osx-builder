@@ -36,11 +36,11 @@ type VMInfo struct {
 }
 
 type VirtualMachine interface {
-	vmrunPath() (string, error)
+	lookupVMRunPath() error
 	Info() (*VMInfo, error)
 	SetInfo(info *VMInfo) error
 	CloneFrom(srcfile string, ctype CloneType) error
-	Start(gui bool) error
+	Start(headless bool) error
 	Stop() error
 	Delete() error
 	IsRunning() (bool, error)
@@ -53,7 +53,7 @@ type VirtualMachine interface {
 func runAndLog(cmd *exec.Cmd) (string, string, error) {
 	var stdout, stderr bytes.Buffer
 
-	log.Printf("Executing: %s %v", cmd.Path, cmd.Args[1:])
+	log.Printf("[VMWare] Executing: %s %v", cmd.Path, cmd.Args[1:])
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
@@ -67,7 +67,7 @@ func runAndLog(cmd *exec.Cmd) (string, string, error) {
 			message = stdoutString
 		}
 
-		err = fmt.Errorf("VMware error: %s", message)
+		err = fmt.Errorf("[VMWare] error: %s", message)
 	}
 
 	log.Printf("stdout: %s", stdoutString)

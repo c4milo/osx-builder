@@ -3,41 +3,63 @@ package vmware
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
+	"os/exec"
+	"strings"
 )
 
 type Fusion7VM struct {
-	vmxpath string
+	vmxPath   string
+	vmRunPath string
 }
 
-func NewFusion7VM(vmxpath string) *Fusion7VM {
-	return &Fusion7VM{
-		vmxpath: vmxpath,
+func NewFusion7VM(vmxPath string) *Fusion7VM {
+	fusion7 := &Fusion7VM{
+		vmxPath: vmxPath,
 	}
+
+	if err := fusion7.lookupVMRunPath(); err != nil {
+		log.Fatalln(err)
+	}
+
+	return fusion7
 }
 
-func (v *Fusion7VM) vmrunPath() (string, error) {
-	vmrun := os.Getenv("VMWARE_VMRUN_PATH")
+func (v *Fusion7VM) lookupVMRunPath() error {
+	vmrunPath := os.Getenv("VMWARE_VMRUN_PATH")
 
-	if vmrun != "" {
-		return vmrun, nil
+	if vmrunPath == "" {
+		vmrunPath = "/Applications/VMware Fusion.app/Contents/Library/vmrun"
 	}
 
-	// Guess it is in the default installation path
-	vmrun = "/Applications/VMware Fusion.app/Contents/Library/vmrun"
-	if _, err := os.Stat(vmrun); err != nil {
+	if _, err := os.Stat(vmrunPath); err != nil {
 		if os.IsNotExist(err) {
-			return "", fmt.Errorf("VMWare vmrun not found at path: %s", vmrun)
+			return fmt.Errorf("[Fusion7] VMWare vmrun program not found at path: %s", vmrunPath)
 		}
 	}
 
-	return vmrun, nil
+	v.vmRunPath = vmrunPath
+	return nil
 }
 
 func (v *Fusion7VM) verifyVMXPath() error {
-	if v.vmxpath == "" {
+	if v.vmxPath == "" {
 		return errors.New("[Fusion7] Empty VMX file path. Nothing to operate on.")
 	}
+	return nil
+}
+
+func (v *Fusion7VM) CloneFrom(srcfile string, ctype CloneType) error {
+	if err := v.verifyVMXPath(); err != nil {
+		return err
+	}
+
+	cmd := exec.Command(v.vmRunPath, "clone", srcfile, v.vmxPath, string(ctype))
+	if _, _, err := runAndLog(cmd); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -45,6 +67,14 @@ func (v *Fusion7VM) Info() (*VMInfo, error) {
 	if err := v.verifyVMXPath(); err != nil {
 		return nil, err
 	}
+
+	// info := new(VMInfo)
+	// info.Annotation
+	// info.CPUs
+	// info.MemorySize
+	// info.Name
+	// info.NetworkAdapters
+
 	return nil, nil
 }
 
@@ -55,17 +85,21 @@ func (v *Fusion7VM) SetInfo(info *VMInfo) error {
 	return nil
 }
 
-func (v *Fusion7VM) CloneFrom(srcfile string, ctype CloneType) error {
+func (v *Fusion7VM) Start(headless bool) error {
 	if err := v.verifyVMXPath(); err != nil {
 		return err
 	}
-	return nil
-}
 
-func (v *Fusion7VM) Start(gui bool) error {
-	if err := v.verifyVMXPath(); err != nil {
+	guiParam := "nogui"
+	if headless {
+		guiParam = "gui"
+	}
+
+	cmd := exec.Command(v.vmRunPath, "start", v.vmxPath, guiParam)
+	if _, _, err := runAndLog(cmd); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -74,12 +108,25 @@ func (v *Fusion7VM) Stop() error {
 		return err
 	}
 	return nil
+
+	cmd := exec.Command(v.vmRunPath, "stop", v.vmxPath)
+	if _, _, err := runAndLog(cmd); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (v *Fusion7VM) Delete() error {
 	if err := v.verifyVMXPath(); err != nil {
 		return err
 	}
+
+	cmd := exec.Command(v.vmRunPath, "deleteVM", v.vmxPath)
+	if _, _, err := runAndLog(cmd); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -87,12 +134,37 @@ func (v *Fusion7VM) IsRunning() (bool, error) {
 	if err := v.verifyVMXPath(); err != nil {
 		return false, err
 	}
+
+	cmd := exec.Command(v.vmRunPath, "list")
+	stdout, _, err := runAndLog(cmd)
+	if err != nil {
+		return false, err
+	}
+
+	for _, line := range strings.Split(stdout, "\n") {
+		if line == v.vmxPath {
+			return true, nil
+		}
+	}
+
 	return false, nil
 }
 
 func (v *Fusion7VM) HasToolsInstalled() (bool, error) {
 	if err := v.verifyVMXPath(); err != nil {
 		return false, err
+	}
+
+	cmd := exec.Command(v.vmRunPath, "checkToolsState", v.vmxPath)
+	stdout, _, err := runAndLog(cmd)
+	if err != nil {
+		return false, err
+	}
+
+	for _, line := range strings.Split(stdout, "\n") {
+		if line == "installed" {
+			return true, nil
+		}
 	}
 	return false, nil
 }
@@ -101,6 +173,19 @@ func (v *Fusion7VM) IPAddress() (string, error) {
 	if err := v.verifyVMXPath(); err != nil {
 		return "", err
 	}
+
+	cmd := exec.Command(v.vmRunPath, "getGuestIPAddress", v.vmxPath, "-wait")
+	stdout, _, err := runAndLog(cmd)
+	if err != nil {
+		return "", err
+	}
+
+	addresses := strings.Split(stdout, "\n")
+
+	if len(addresses) > 0 {
+		return addresses[0], nil
+	}
+
 	return "", nil
 }
 
@@ -109,7 +194,7 @@ func (v *Fusion7VM) Exists() (bool, error) {
 		return false, err
 	}
 
-	if _, err := os.Stat(v.vmxpath); os.IsNotExist(err) {
+	if _, err := os.Stat(v.vmxPath); os.IsNotExist(err) {
 		return false, nil
 	} else if err != nil {
 		return false, err
