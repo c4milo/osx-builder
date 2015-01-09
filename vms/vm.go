@@ -169,9 +169,7 @@ func (v *VM) Update() error {
 	info.Annotation = base64.StdEncoding.EncodeToString(imageJSON)
 
 	log.Printf("[DEBUG] Adding network adapter...")
-	info.NetworkAdapters = []vmware.NetworkAdapter{
-		vmware.NetworkAdapter{NetType: v.Network},
-	}
+	info.NetworkType = v.Network
 
 	err = v.vmwareVM.SetInfo(info)
 	if err != nil {
@@ -260,10 +258,7 @@ func (v *VM) Refresh() error {
 		return err
 	}
 	v.OSImage = image
-
-	if len(info.NetworkAdapters) > 0 {
-		v.Network = info.NetworkAdapters[0].NetType
-	}
+	v.Network = info.NetworkType
 
 	running, err := v.vmwareVM.IsRunning()
 	if err != nil {

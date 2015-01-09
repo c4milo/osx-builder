@@ -23,16 +23,13 @@ const (
 	CloneLinked CloneType = "linked"
 )
 
-type NetworkAdapter struct {
-	NetType NetworkType
-}
-
 type VMInfo struct {
-	Name            string
-	Annotation      string
-	MemorySize      int
-	CPUs            int
-	NetworkAdapters []NetworkAdapter
+	Name        string
+	Annotation  string
+	MemorySize  int
+	CPUs        int
+	GuestOS     string
+	NetworkType NetworkType
 }
 
 type VirtualMachine interface {

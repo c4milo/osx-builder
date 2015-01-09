@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -68,20 +69,69 @@ func (v *Fusion7VM) Info() (*VMInfo, error) {
 		return nil, err
 	}
 
-	// info := new(VMInfo)
-	// info.Annotation
-	// info.CPUs
-	// info.MemorySize
-	// info.Name
-	// info.NetworkAdapters
+	vmx, err := readvmx(v.vmxPath)
+	if err != nil {
+		return nil, err
+	}
 
-	return nil, nil
+	info := new(VMInfo)
+	info.Name = vmx["displayname"]
+	info.Annotation = vmx["annotation"]
+
+	numcpus, err := strconv.ParseInt(vmx["numvcpus"], 0, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	memsize, err := strconv.ParseInt(vmx["memsize"], 0, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	info.CPUs = int(numcpus)
+	info.MemorySize = int(memsize)
+	info.NetworkType = NetworkType(vmx["ethernet0.connectiontype"])
+	info.GuestOS = vmx["guestos"]
+
+	return info, nil
 }
 
 func (v *Fusion7VM) SetInfo(info *VMInfo) error {
 	if err := v.verifyVMXPath(); err != nil {
 		return err
 	}
+
+	vmx, err := readvmx(v.vmxPath)
+	if err != nil {
+		return err
+	}
+
+	vmx["displayname"] = info.Name
+	vmx["annotation"] = info.Annotation
+	vmx["numcpus"] = strconv.Itoa(info.CPUs)
+	vmx["memsize"] = strconv.Itoa(info.MemorySize)
+
+	// This is to make sure to auto answer popups windows in the GUI. This is
+	// especially helpful when running in headless mode
+	vmx["msg.autoanswer"] = "true"
+
+	// Deletes all network adapters. For the simplicity's sake
+	// we are going to deliberately use only one network adapter.
+	for k, _ := range vmx {
+		if strings.HasPrefix(k, "ethernet") {
+			delete(vmx, k)
+		}
+	}
+
+	vmx["ethernet0.present"] = "true"
+	vmx["ethernet0.startconnected"] = "true"
+	vmx["ethernet0.virtualdev"] = "e1000"
+	vmx["ethernet0.connectiontype"] = string(info.NetworkType)
+
+	if err := writevmx(v.vmxPath, vmx); err != nil {
+		return err
+	}
+
 	return nil
 }
 
