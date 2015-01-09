@@ -108,12 +108,17 @@ func (v *Fusion7VM) SetInfo(info *VMInfo) error {
 
 	vmx["displayname"] = info.Name
 	vmx["annotation"] = info.Annotation
-	vmx["numcpus"] = strconv.Itoa(info.CPUs)
+	vmx["numvcpus"] = strconv.Itoa(info.CPUs)
 	vmx["memsize"] = strconv.Itoa(info.MemorySize)
 
 	// This is to make sure to auto answer popups windows in the GUI. This is
 	// especially helpful when running in headless mode
 	vmx["msg.autoanswer"] = "true"
+
+	// The following settings does nothing in Fusion7.
+	// vmx["gui.exitatpoweroff"] = "true"
+	// vmx["gui.restricted"] = "true"
+	// vmx["gui.exitonclihlt"] = "true"
 
 	// Deletes all network adapters. For the simplicity's sake
 	// we are going to deliberately use only one network adapter.
@@ -135,14 +140,19 @@ func (v *Fusion7VM) SetInfo(info *VMInfo) error {
 	return nil
 }
 
+// Known issues:
+// When starting a VM with "nogui", the VM doesn't seem to boot in VMWare Fusion 7
+// It does boot, though, if we start it with "gui". Go figure why...
+// The problem with starting with "gui" is that it won't be possible to delete
+// the VM using normal means. vmrun returns "This VM is in use."
 func (v *Fusion7VM) Start(headless bool) error {
 	if err := v.verifyVMXPath(); err != nil {
 		return err
 	}
 
-	guiParam := "nogui"
+	guiParam := "gui"
 	if headless {
-		guiParam = "gui"
+		guiParam = "nogui"
 	}
 
 	cmd := exec.Command(v.vmRunPath, "start", v.vmxPath, guiParam)
@@ -157,7 +167,6 @@ func (v *Fusion7VM) Stop() error {
 	if err := v.verifyVMXPath(); err != nil {
 		return err
 	}
-	return nil
 
 	cmd := exec.Command(v.vmRunPath, "stop", v.vmxPath)
 	if _, _, err := runAndLog(cmd); err != nil {
@@ -224,7 +233,7 @@ func (v *Fusion7VM) IPAddress() (string, error) {
 		return "", err
 	}
 
-	cmd := exec.Command(v.vmRunPath, "getGuestIPAddress", v.vmxPath, "-wait")
+	cmd := exec.Command(v.vmRunPath, "getGuestIPAddress", v.vmxPath)
 	stdout, _, err := runAndLog(cmd)
 	if err != nil {
 		return "", err

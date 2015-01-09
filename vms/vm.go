@@ -193,14 +193,18 @@ func (v *VM) Destroy() error {
 	}
 
 	if running {
+		log.Printf("[DEBUG] Stopping %s...", v.ID)
 		if err = v.vmwareVM.Stop(); err != nil {
 			return err
 		}
+		log.Printf("[DEBUG] %s stopped", v.ID)
 	}
 
-	err = v.vmwareVM.Delete()
-	if err != nil {
-		return err
+	// We are not handling errors here on purpose and due to vmrun limitations
+	v.vmwareVM.Delete()
+
+	if v.ID != "" {
+		os.RemoveAll(filepath.Join(config.VMSPath, v.ID))
 	}
 
 	return nil
@@ -241,10 +245,7 @@ func (v *VM) Refresh() error {
 	v.Memory = info.MemorySize
 	v.ID = info.Name
 
-	v.IPAddress, err = v.vmwareVM.IPAddress()
-	if err != nil {
-		return err
-	}
+	v.IPAddress, _ = v.vmwareVM.IPAddress()
 
 	imageJSONBase64 := info.Annotation
 	imageJSON, err := base64.StdEncoding.DecodeString(imageJSONBase64)
