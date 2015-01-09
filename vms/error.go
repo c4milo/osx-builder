@@ -3,7 +3,7 @@ package vms
 import (
 	"net/http"
 
-	"github.com/c4milo/go-osx-builder/apperror"
+	"github.com/c4milo/osx-builder/apperror"
 )
 
 var ErrInternal = apperror.Error{
