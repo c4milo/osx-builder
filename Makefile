@@ -17,11 +17,14 @@ build:
 
 dist: build
 	@rm -rf dist && mkdir dist
+	@mkdir -p build/libvix; cp -r vendor/libvix/libvixAllProducts* build/libvix/
+	@echo "DYLD_LIBRARY_PATH=./libvix LD_LIBRARY_PATH=./libvix ./go-osx-builder" > build/run.sh
 	(cd $(shell pwd)/build && tar -cvzf ../dist/$(NAME)_$(VERSION)_$(PLATFORM)_$(ARCH).tar.gz *); \
 	(cd $(shell pwd)/dist && shasum -a 512 $(NAME)_$(VERSION)_$(PLATFORM)_$(ARCH).tar.gz > $(NAME)_$(VERSION)_$(PLATFORM)_$(ARCH).tar.gz.sha512);
 
 deps:
 	go get github.com/c4milo/github-release
+	mkdir -p $GOPATH/src/github.com/hooklift/govix; git clone https://github.com/hooklift/govix.git $GOPATH/src/github.com/hooklift/govix
 
 release: dist
 	@latest_tag=$$(git describe --tags `git rev-list --tags --max-count=1`); \
