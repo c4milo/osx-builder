@@ -18,7 +18,7 @@ build:
 dist: build
 	@rm -rf dist && mkdir dist
 	@mkdir -p build/libvix; cp -r vendor/libvix/libvixAllProducts* build/libvix/
-	@echo "DYLD_LIBRARY_PATH=./libvix LD_LIBRARY_PATH=./libvix ./go-osx-builder" > build/run.sh
+	@echo "DYLD_LIBRARY_PATH=./libvix LD_LIBRARY_PATH=./libvix ./$(NAME)" > build/run.sh
 	(cd $(shell pwd)/build && tar -cvzf ../dist/$(NAME)_$(VERSION)_$(PLATFORM)_$(ARCH).tar.gz *); \
 	(cd $(shell pwd)/dist && shasum -a 512 $(NAME)_$(VERSION)_$(PLATFORM)_$(ARCH).tar.gz > $(NAME)_$(VERSION)_$(PLATFORM)_$(ARCH).tar.gz.sha512);
 
