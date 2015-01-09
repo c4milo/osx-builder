@@ -3,87 +3,73 @@ package vms
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
 	"runtime/debug"
-	"strings"
-	"time"
 
 	"github.com/c4milo/osx-builder/config"
 	"github.com/c4milo/osx-builder/pkg/unzipit"
-	"github.com/dustin/go-humanize"
-	govix "github.com/hooklift/govix"
+	"github.com/c4milo/osx-builder/pkg/vmware"
 )
 
-// Virtual machine configuration
-type VM struct {
-	// VMX file path for Internal use only
-	VMXFile string `json:"-"`
+type VMConfig struct {
 	// ID of the virtual machine
 	ID string `json:"id"`
 	// Image to use during the creation of this virtual machine
-	Image Image `json:"image"`
+	OSImage Image `json:"image"`
 	// Number of virtual cpus
-	CPUs uint `json:"cpus"`
+	CPUs int `json:"cpus"`
 	// Memory size in megabytes.
-	Memory string `json:"memory"`
-	// Whether to upgrade the VM virtual hardware
-	UpgradeVHardware bool `json:"-"`
-	// The timeout to wait for VMware Tools to be initialized inside the VM
-	ToolsInitTimeout time.Duration `json:"tools_init_timeout"`
-	// Whether to launch the VM with graphical environment
-	LaunchGUI bool `json:"launch_gui"`
+	Memory int `json:"memory"`
 	// Network adapters
-	VNetworkAdapters []*govix.NetworkAdapter `json:"-"`
-	// VM IP address as reported by VIX
+	Network vmware.NetworkType `json:"network_type"`
+	// Whether to launch the VM with graphical environment
+	GUI bool `json:"gui"`
+}
+
+// Virtual machine configuration
+type VM struct {
+	VMConfig
+	// Underlined virtual machine manager
+	manager vmware.VMManager
+	// Internal reference to the VM's vmx file
+	vmxfile string `json:"-"`
+	// VM IP address as reported by VMWare
 	IPAddress string `json:"ip_address"`
 	// Power status
 	Status string `json:"status"`
-	// Guest OS
-	GuestOS string `json:"guest_os"`
 }
 
-// Keeps a reference to a VMWare host connection
-var VMwareClient *govix.Host
+func NewVM(vmcfg VMConfig) *VM {
+	vmxfile := filepath.Join(config.VMSPath, vmcfg.ID, vmcfg.ID+".vmx")
 
-func init() {
-	fmt.Printf("[INFO] Connecting to VMware...")
-	host, err := govix.Connect(govix.ConnectConfig{
-		Provider: govix.VMWARE_WORKSTATION,
-	})
-
-	if err != nil {
-		log.Fatalln(err.Error())
+	return &VM{
+		VMConfig: vmcfg,
+		manager:  new(vmware.Fusion7),
+		vmxfile:  vmxfile,
 	}
-
-	fmt.Println(" OK")
-
-	VMwareClient = host
 }
 
 // Sets default values for VM attributes
-func (v *VM) SetDefaults() {
+func (v *VM) setDefaults() {
 	if v.CPUs <= 0 {
 		v.CPUs = 2
 	}
 
-	if v.Memory == "" {
-		v.Memory = "512mib"
-	}
-
-	if v.ToolsInitTimeout.Seconds() <= 0 {
-		v.ToolsInitTimeout = time.Duration(30) * time.Second
+	if v.Memory < 512 {
+		v.Memory = 512
 	}
 }
 
 // Downloads OS image, creates and launches a virtual machine.
-func (v *VM) Create() (string, error) {
-	log.Printf("[DEBUG] Creating VM resource...")
+func (v *VM) Create() error {
+	log.Printf("[DEBUG] Creating VM %s", v.ID)
 
-	image := v.Image
+	image := v.OSImage
 	goldPath := filepath.Join(config.GoldImgsPath, image.Checksum)
 
 	_, err := os.Stat(goldPath)
@@ -95,85 +81,71 @@ func (v *VM) Create() (string, error) {
 
 		imgPath := filepath.Join(config.ImagesPath, image.Checksum)
 		if err = image.Download(imgPath); err != nil {
-			return "", err
+			return err
 		}
 		defer image.file.Close()
 
 		// Makes sure file cursor is in the right position.
 		_, err := image.file.Seek(0, 0)
 		if err != nil {
-			return "", err
+			return err
 		}
 
-		log.Printf("[DEBUG] Unpacking Gold virtual machine into %s\n", goldPath)
+		log.Printf("[DEBUG] Unpacking gold virtual machine into %s\n", goldPath)
 		_, err = unzipit.Unpack(image.file, goldPath)
 		if err != nil {
 			debug.PrintStack()
-			log.Printf("[ERROR] Unpacking Gold image %s\n", image.file.Name())
-			return "", err
+			log.Printf("[ERROR] Unpacking gold image %s\n", image.file.Name())
+			return err
 		}
 	}
 
 	pattern := filepath.Join(goldPath, "**.vmx")
 
-	log.Printf("[DEBUG] Finding Gold virtual machine vmx file in %s", pattern)
+	log.Printf("[DEBUG] Finding gold vmx file in %s", pattern)
 	files, _ := filepath.Glob(pattern)
 
 	if len(files) == 0 {
-		return "", fmt.Errorf("[ERROR] vmx file was not found: %s", pattern)
+		return fmt.Errorf("[ERROR] Gold vmx file was not found: %s", pattern)
 	}
 
-	vmxFile := files[0]
-	log.Printf("[DEBUG] Gold virtual machine vmx file found %v", vmxFile)
-
-	log.Printf("[INFO] Opening Gold virtual machine from %s", vmxFile)
-	vm, err := VMwareClient.OpenVM(vmxFile, v.Image.Password)
-	if err != nil {
-		return "", err
-	}
+	goldvmx := files[0]
+	log.Printf("[DEBUG] Gold vmx file found at %v", goldvmx)
 
 	vmFolder := filepath.Join(config.VMSPath, v.ID)
-	newvmx := filepath.Join(config.VMSPath, v.ID, v.ID+".vmx")
+	clonevmx := filepath.Join(config.VMSPath, v.ID, v.ID+".vmx")
 
-	if _, err = os.Stat(newvmx); os.IsNotExist(err) {
-		log.Printf("[INFO] Virtual machine clone not found: %s, err: %+v", newvmx, err)
+	if _, err = os.Stat(clonevmx); os.IsNotExist(err) {
+		log.Printf("[INFO] Virtual machine clone not found: %s, err: %+v", clonevmx, err)
 		// If there is not a VMX file, make sure nothing else is in there either.
-		// We were seeing VIX 13004 errors when only a nvram file existed.
 		os.RemoveAll(vmFolder)
 
-		log.Printf("[INFO] Cloning Gold virtual machine into %s...", newvmx)
-		_, err := vm.Clone(govix.CLONETYPE_LINKED, newvmx)
-
-		// If there is an error and the error is other than "The snapshot already exists"
-		// then return the error
-		if err != nil && err.(*govix.Error).Code != 13004 {
-			return "", err
+		log.Printf("[INFO] Cloning gold vmx into %s...", clonevmx)
+		err := v.manager.Clone(goldvmx, clonevmx, vmware.CloneLinked)
+		if err != nil {
+			return err
 		}
 	} else {
-		log.Printf("[INFO] Virtual Machine clone %s already exist, moving on.", newvmx)
+		log.Printf("[INFO] Clone %s already exist, moving on.", clonevmx)
 	}
 
-	if err = v.Update(newvmx); err != nil {
-		return "", err
-	}
+	v.vmxfile = clonevmx
 
-	return newvmx, nil
-}
-
-// Opens and updates virtual machine resource
-func (v *VM) Update(vmxFile string) error {
-	// Sets default values if some attributes were not set or have
-	// invalid values
-	v.SetDefaults()
-
-	log.Printf("[INFO] Opening virtual machine from %s", vmxFile)
-
-	vm, err := VMwareClient.OpenVM(vmxFile, v.Image.Password)
-	if err != nil {
+	if err = v.Update(); err != nil {
 		return err
 	}
 
-	running, err := vm.IsRunning()
+	return nil
+}
+
+// Updates virtual machine
+func (v *VM) Update() error {
+	if v.vmxfile == "" {
+		return errors.New("Empty vmxfile. Nothing to update.")
+	}
+	v.setDefaults()
+
+	running, err := v.manager.IsRunning(v.vmxfile)
 	if err != nil {
 		return err
 	}
@@ -181,169 +153,94 @@ func (v *VM) Update(vmxFile string) error {
 	if running {
 		log.Printf("[INFO] Virtual machine seems to be running, we need to " +
 			"power it off in order to make changes.")
-		err = powerOff(vm)
+		err = v.manager.Stop(v.vmxfile)
 		if err != nil {
 			return err
 		}
 	}
 
-	memoryInMb, err := humanize.ParseBytes(v.Memory)
-	if err != nil {
-		log.Printf("[WARN] Unable to set memory size, defaulting to 512mib: %s", err)
-		memoryInMb = 512
-	} else {
-		memoryInMb = (memoryInMb / 1024) / 1024
+	info := &vmware.VMInfo{
+		MemorySize: v.Memory,
+		CPUs:       v.CPUs,
+		Name:       v.ID,
 	}
 
-	log.Printf("[DEBUG] Setting memory size to %d megabytes", memoryInMb)
-	vm.SetMemorySize(uint(memoryInMb))
-
-	log.Printf("[DEBUG] Setting vcpus to %d", v.CPUs)
-	vm.SetNumberVcpus(v.CPUs)
-
-	log.Printf("[DEBUG] Setting ID to %s", v.ID)
-	vm.SetDisplayName(v.ID)
-
-	imageJSON, err := json.Marshal(v.Image)
+	imageJSON, err := json.Marshal(v.OSImage)
 	if err != nil {
 		return err
 	}
 
 	// We need to encode the JSON data in base64 so that the VMX file is not
 	// interpreted by VMWare as corrupted.
-	vm.SetAnnotation(base64.StdEncoding.EncodeToString(imageJSON))
+	info.Annotation = base64.StdEncoding.EncodeToString(imageJSON)
 
-	if v.UpgradeVHardware {
-		log.Println("[INFO] Upgrading virtual hardware...")
-		err = vm.UpgradeVHardware()
-		if err != nil {
-			return err
-		}
+	log.Printf("[DEBUG] Adding network adapter...")
+	info.NetworkAdapters = []vmware.NetworkAdapter{
+		vmware.NetworkAdapter{NetType: v.Network},
 	}
 
-	log.Printf("[DEBUG] Removing all network adapters from vmx file...")
-	err = vm.RemoveAllNetworkAdapters()
+	err = v.manager.SetInfo(info)
 	if err != nil {
 		return err
-	}
-
-	log.Println("[INFO] Attaching virtual network adapters...")
-	for _, adapter := range v.VNetworkAdapters {
-		adapter.StartConnected = true
-		if adapter.ConnType == govix.NETWORK_BRIDGED {
-			adapter.LinkStatePropagation = true
-		}
-
-		log.Printf("[DEBUG] Adapter: %+v", adapter)
-		err := vm.AddNetworkAdapter(adapter)
-		if err != nil {
-			return err
-		}
 	}
 
 	log.Println("[INFO] Powering virtual machine on...")
-	var options govix.VMPowerOption
-
-	if v.LaunchGUI {
-		log.Println("[INFO] Preparing to launch GUI...")
-		options |= govix.VMPOWEROP_LAUNCH_GUI
-	}
-
-	options |= govix.VMPOWEROP_NORMAL
-
-	err = vm.PowerOn(options)
+	err = v.manager.Start(v.vmxfile, v.GUI)
 	if err != nil {
 		return err
 	}
-
-	log.Printf("[INFO] Waiting %s for VMware Tools to initialize...\n", v.ToolsInitTimeout)
-	err = vm.WaitForToolsInGuest(v.ToolsInitTimeout)
-	if err != nil {
-		log.Println("[WARN] VMware Tools took too long to initialize or is not " +
-			"installed.")
-	}
-
-	return nil
-}
-
-// Powers off a virtual machine attempting a graceful shutdown.
-func powerOff(vm *govix.VM) error {
-	tstate, err := vm.ToolsState()
-	if err != nil {
-		return err
-	}
-
-	var powerOpts govix.VMPowerOption
-	log.Printf("Tools state %d", tstate)
-
-	if (tstate & govix.TOOLSSTATE_RUNNING) != 0 {
-		log.Printf("[INFO] VMware Tools is running, attempting a graceful shutdown...")
-		// if VMware Tools is running, attempt a graceful shutdown.
-		powerOpts |= govix.VMPOWEROP_FROM_GUEST
-	} else {
-		log.Printf("[INFO] VMware Tools is NOT running, shutting down the " +
-			"machine abruptly...")
-		powerOpts |= govix.VMPOWEROP_NORMAL
-	}
-
-	err = vm.PowerOff(powerOpts)
-	if err != nil {
-		return err
-	}
-	log.Printf("[DEBUG] Virtual machine is off.")
 
 	return nil
 }
 
 // Destroys a virtual machine resource
-func (v *VM) Destroy(vmxFile string) error {
-	log.Printf("[DEBUG] Destroying VM resource %s...", vmxFile)
-
-	vm, err := VMwareClient.OpenVM(vmxFile, v.Image.Password)
-	if err != nil {
-		return err
+func (v *VM) Destroy() error {
+	if v.vmxfile == "" {
+		return errors.New("Empty vmxfile. Nothing to destroy.")
 	}
 
-	running, err := vm.IsRunning()
+	running, err := v.manager.IsRunning(v.vmxfile)
 	if err != nil {
 		return err
 	}
 
 	if running {
-		if err = powerOff(vm); err != nil {
+		log.Printf("[DEBUG] Stopping %s...", v.vmxfile)
+		if err = v.manager.Stop(v.vmxfile); err != nil {
 			return err
 		}
 	}
 
-	log.Println("[DEBUG] Asking VIX to delete the VM...")
-	err = vm.Delete(govix.VMDELETE_DISK_FILES | govix.VMDELETE_FORCE)
+	log.Printf("[DEBUG] Destroying %s...", v.vmxfile)
+	err = v.manager.Delete(v.vmxfile)
 	if err != nil {
 		return err
 	}
 
-	// Just in case as we don't really know what VIX is doing under the hood
+	// Just in case
 	if v.ID != "" {
 		os.RemoveAll(filepath.Join(config.VMSPath, v.ID))
 	}
 
-	log.Printf("[DEBUG] VM %s Destroyed.\n", vmxFile)
-
+	log.Printf("[DEBUG] VM %s Destroyed.", v.vmxfile)
 	return nil
 }
 
 // Finds a virtual machine by ID
 func FindVM(id string) (*VM, error) {
-	vmxFile := filepath.Join(config.VMSPath, id, id+".vmx")
+	vmxfile := filepath.Join(config.VMSPath, id, id+".vmx")
 
-	_, err := os.Stat(vmxFile)
+	_, err := os.Stat(vmxfile)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
 
-	vm := &VM{}
+	vm := NewVM(VMConfig{
+		ID: id,
+	})
 
-	log.Printf("Getting VM information from %s...\n", vmxFile)
-	err = vm.Refresh(vmxFile)
+	log.Printf("Getting VM information from %s...", vm.vmxfile)
+	err = vm.Refresh()
 	if err != nil {
 		return nil, err
 	}
@@ -352,48 +249,27 @@ func FindVM(id string) (*VM, error) {
 }
 
 // Refreshes state with VMware
-func (v *VM) Refresh(vmxFile string) error {
-	log.Printf("[DEBUG] Syncing VM resource %s...", vmxFile)
+func (v *VM) Refresh() error {
+	if v.vmxfile == "" {
+		return errors.New("Empty vmxfile. Nothing to refresh.")
+	}
 
-	v.VMXFile = vmxFile
-
-	log.Printf("[DEBUG] Opening VM %s...", vmxFile)
-	vm, err := VMwareClient.OpenVM(vmxFile, v.Image.Password)
+	log.Printf("[DEBUG] Refreshing state with VMWare %s...", v.vmxfile)
+	info, err := v.manager.Info(v.vmxfile)
 	if err != nil {
 		return err
 	}
 
-	running, err := vm.IsRunning()
-	if !running {
-		return err
-	}
+	v.CPUs = info.CPUs
+	v.Memory = info.MemorySize
+	v.ID = info.Name
 
-	vcpus, err := vm.Vcpus()
+	v.IPAddress, err = v.manager.IPAddress(v.vmxfile)
 	if err != nil {
 		return err
 	}
 
-	memory, err := vm.MemorySize()
-	if err != nil {
-		return err
-	}
-
-	// We need to convert memory value to megabytes so humanize can interpret it
-	// properly.
-	memory = (memory * 1024) * 1024
-	v.Memory = strings.ToLower(humanize.IBytes(uint64(memory)))
-	v.CPUs = uint(vcpus)
-
-	v.ID, err = vm.DisplayName()
-	if err != nil {
-		return err
-	}
-
-	imageJSONBase64, err := vm.Annotation()
-	if err != nil {
-		return err
-	}
-
+	imageJSONBase64 := info.Annotation
 	imageJSON, err := base64.StdEncoding.DecodeString(imageJSONBase64)
 	if err != nil {
 		return err
@@ -404,74 +280,23 @@ func (v *VM) Refresh(vmxFile string) error {
 	if err != nil {
 		return err
 	}
-	v.Image = image
+	v.OSImage = image
 
-	v.VNetworkAdapters, err = vm.NetworkAdapters()
+	if len(info.NetworkAdapters) > 0 {
+		v.Network = info.NetworkAdapters[0].NetType
+	}
+
+	running, err := v.manager.IsRunning(v.vmxfile)
 	if err != nil {
 		return err
 	}
 
-	v.IPAddress, err = vm.IPAddress()
-	if err != nil {
-		return err
+	if running {
+		v.Status = "running"
+	} else {
+		v.Status = "stopped"
 	}
 
-	powerState, err := vm.PowerState()
-	if err != nil {
-		return err
-	}
-
-	v.Status = Status(powerState)
-	v.GuestOS, err = vm.GuestOS()
-	if err != nil {
-		return err
-	}
-
-	log.Printf("[DEBUG] Finished syncing VM %s...", vmxFile)
+	log.Printf("[DEBUG] Finished refreshing state from %s...", v.vmxfile)
 	return nil
-}
-
-// Resolves power state bitwise flags to more user friendly strings
-func Status(s govix.VMPowerState) string {
-	blockedOnMsg := ",blocked"
-	toolsRunning := ",tools-running"
-	status := "unknown"
-
-	if (s & govix.POWERSTATE_POWERING_OFF) != 0 {
-		status = "powering-off"
-	}
-
-	if (s & govix.POWERSTATE_POWERED_OFF) != 0 {
-		status = "powered-off"
-	}
-
-	if (s & govix.POWERSTATE_POWERING_ON) != 0 {
-		status = "powering-on"
-	}
-
-	if (s & govix.POWERSTATE_POWERED_ON) != 0 {
-		status = "powered-on"
-	}
-
-	if (s & govix.POWERSTATE_SUSPENDING) != 0 {
-		status = "suspending"
-	}
-
-	if (s & govix.POWERSTATE_SUSPENDED) != 0 {
-		status = "suspended"
-	}
-
-	if (s & govix.POWERSTATE_RESETTING) != 0 {
-		status = "resetting"
-	}
-
-	if (s & govix.POWERSTATE_TOOLS_RUNNING) != 0 {
-		status += toolsRunning
-	}
-
-	if (s & govix.POWERSTATE_BLOCKED_ON_MSG) != 0 {
-		status += blockedOnMsg
-	}
-
-	return status
 }

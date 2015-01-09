@@ -9,12 +9,9 @@ import (
 	"log"
 	"net/http"
 	"path"
-	"time"
 
 	"github.com/c4milo/osx-builder/apperror"
 	"github.com/c4milo/osx-builder/pkg/render"
-
-	govix "github.com/hooklift/govix"
 )
 
 var Handlers map[string]func(http.ResponseWriter, *http.Request) = map[string]func(http.ResponseWriter, *http.Request){
@@ -25,20 +22,9 @@ var Handlers map[string]func(http.ResponseWriter, *http.Request) = map[string]fu
 
 // Defines parameters supported by the CreateVM service
 type CreateVMParams struct {
-	// Number of virtual cpus to assign to the VM
-	CPUs uint `json:"cpus"`
-	// Memory for the virtual machine in IEC units. Ex: 1024mib, 1gib, 5120kib,
-	Memory string `json:"memory"`
-	// Network type, either "bridged", "nat" or "hostonly"
-	NetType govix.NetworkType `json:"network_type"`
-	// Guest OS image that is going to be used as Gold image for creating new VMs
-	OSImage Image `json:"image"`
+	VMConfig
 	// Script to run inside the Guest OS upon first boot
 	BootstrapScript string `json:"bootstrap_script"`
-	// Timeout value for waiting for VMWare Tools to initialize
-	ToolsInitTimeout time.Duration `json:"tools_init_timeout"`
-	// Whether or not to launch the user interface when creating the VM
-	LaunchGUI bool `json:"launch_gui"`
 	// Callback URL to post results once the VM creation process finishes. It
 	// must support POST requests and be ready to receive JSON in the body of
 	// the request.
@@ -109,26 +95,12 @@ func CreateVM(w http.ResponseWriter, req *http.Request) {
 	}
 
 	id := fmt.Sprintf("%x", b)
+	params.VMConfig.ID = id
 
-	vm := &VM{
-		ID:               id,
-		Image:            params.OSImage,
-		CPUs:             params.CPUs,
-		Memory:           params.Memory,
-		UpgradeVHardware: false,
-		ToolsInitTimeout: params.ToolsInitTimeout,
-		LaunchGUI:        params.LaunchGUI,
-	}
-
-	nic := &govix.NetworkAdapter{
-		ConnType: params.NetType,
-	}
-
-	vm.VNetworkAdapters = make([]*govix.NetworkAdapter, 0, 1)
-	vm.VNetworkAdapters = append(vm.VNetworkAdapters, nic)
+	vm := NewVM(params.VMConfig)
 
 	go func() {
-		vmxfile, err := vm.Create()
+		err := vm.Create()
 		if err != nil {
 			log.Printf(`[ERROR] msg="%s" value=%+v code=%s error="%s" stacktrace=%s\n`,
 				ErrCreatingVM.Message, vm, ErrCreatingVM.Code, err.Error(), apperror.GetStacktrace())
@@ -137,8 +109,9 @@ func CreateVM(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
+		// One last effort to get an IP...
 		if vm.IPAddress == "" {
-			vm.Refresh(vmxfile)
+			vm.Refresh()
 		}
 
 		sendResult(params.CallbackURL, vm)
@@ -152,7 +125,7 @@ func CreateVM(w http.ResponseWriter, req *http.Request) {
 
 // Defines parameters supported by the DestroyVM service
 type DestroyVMParams struct {
-	// Virtual machine ID to destroy
+	// Virtual machine ID
 	ID string
 }
 
@@ -185,7 +158,7 @@ func DestroyVM(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	err = vm.Destroy(vm.VMXFile)
+	err = vm.Destroy()
 	if err != nil {
 		log.Printf(`[ERROR] msg="%s" code=%s error="%s" stacktrace=%s\n`,
 			ErrInternal.Message, ErrInternal.Code, err.Error(), apperror.GetStacktrace())
@@ -214,7 +187,6 @@ func GetVM(w http.ResponseWriter, req *http.Request) {
 	}
 
 	vm, err := FindVM(params.ID)
-
 	if err != nil {
 		log.Printf(`[ERROR] msg="%s" code=%s error="%s" stacktrace=%s\n`,
 			ErrOpeningVM.Message, ErrOpeningVM.Code, err.Error(), apperror.GetStacktrace())

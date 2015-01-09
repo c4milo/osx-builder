@@ -37,8 +37,5 @@ func init() {
 
 func main() {
 	address := ":" + config.Port
-	err := http.ListenAndServe(address, nil)
-	if err != nil {
-		log.Fatal("ListenAndServe: ", err)
-	}
+	log.Fatal(http.ListenAndServe(address, nil))
 }

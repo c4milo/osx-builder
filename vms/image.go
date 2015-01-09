@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -37,15 +38,15 @@ type Image struct {
 // Downloads and a virtual machine image
 func (img *Image) Download(destPath string) error {
 	if img.URL == "" {
-		panic("URL is required")
+		return errors.New("Image URL is required")
 	}
 
 	if img.Checksum == "" {
-		panic("Checksum is required")
+		return errors.New("Image checksum is required")
 	}
 
 	if img.ChecksumType == "" {
-		panic("Checksum type is required")
+		return errors.New("Image checksum type is required")
 	}
 
 	if destPath == "" {
