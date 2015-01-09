@@ -33,7 +33,7 @@ Creates virtual machines asynchronously from an existing VMware virtual machine.
 ```json
 {
 	"cpus": 2,
-	"memory": "1gib",
+	"memory": 1024,
 	"network_type": "nat",
 	"image": {
 		"url": "https://github.com/hooklift/boxes/releases/download/coreos-dev-20141126/coreos_developer_vmware.tar.gz",
@@ -51,7 +51,7 @@ Creates virtual machines asynchronously from an existing VMware virtual machine.
 * nat
 * hostonly
 
-Memory has to be specified in IEC units. Example: 1gib, 1024mib, 1048576kib
+Memory is understood in megabytes.
 
 
 **Valid checksum algorithms:**
@@ -80,8 +80,7 @@ Memory has to be specified in IEC units. Example: 1gib, 1024mib, 1048576kib
     "checksum_type": "sha1"
   },
   "cpus": 2,
-  "memory": "1024mib",
-  "tools_init_timeout": 0,
+  "memory": 1024,
   "headless": true,
   "ip_address": "",
   "status": "",
@@ -95,7 +94,6 @@ Once the creation process finishes, the following properties are going to be pop
 
 * ip_address
 * status
-* guest_os
 
 
 ## Retrieve virtual machine information
@@ -115,12 +113,10 @@ Once the creation process finishes, the following properties are going to be pop
     "checksum_type": "sha1"
   },
   "cpus": 2,
-  "memory": "1.0gib",
-  "tools_init_timeout": 0,
+  "memory": 1024,
   "headless": false,
   "ip_address": "192.168.123.147",
-  "status": "powered-on",
-  "guest_os": "other26xlinux-64"
+  "status": "running",
 }
 ```
 
