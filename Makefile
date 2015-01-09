@@ -2,6 +2,8 @@ NAME 		:= osx-builder
 VERSION 	:= v1.0.0
 PLATFORM 	:= $(shell go env | grep GOHOSTOS | cut -d '"' -f 2)
 ARCH 		:= $(shell go env | grep GOARCH | cut -d '"' -f 2)
+BRANCH		:= $(shell git rev-parse --abbrev-ref HEAD)
+VERSION 	:= v1.0.0
 
 build:
 	go build -ldflags "-X main.Version $(VERSION)" -o build/$(NAME)
@@ -19,7 +21,7 @@ release: dist
 	comparison="$$latest_tag..HEAD"; \
 	if [ -z "$$latest_tag" ]; then comparison=""; fi; \
 	changelog=$$(git log $$comparison --oneline --no-merges --reverse); \
-	github-release c4milo/$(NAME) $(VERSION) "$$(git rev-parse --abbrev-ref HEAD)" "**Changelog**<br/>$$changelog" 'dist/*'; \
+	github-release c4milo/$(NAME) $(VERSION) $(BRANCH) "**Changelog**<br/>$$changelog" 'dist/*'; \
 	git pull
 
 test:
