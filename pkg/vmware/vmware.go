@@ -35,17 +35,18 @@ type VMInfo struct {
 	NetworkAdapters []NetworkAdapter
 }
 
-type VMManager interface {
+type VirtualMachine interface {
 	vmrunPath() (string, error)
-	Info(vmxfile string) (*VMInfo, error)
+	Info() (*VMInfo, error)
 	SetInfo(info *VMInfo) error
-	Clone(vmxfile, dstfile string, ctype CloneType) error
-	Start(vmxfile string, gui bool) error
-	Stop(vmxfile string) error
-	Delete(vmxfile string) error
-	IsRunning(vmxfile string) (bool, error)
-	HasToolsInstalled(vmxfile string) (bool, error)
-	IPAddress(vmxfile string) (string, error)
+	CloneFrom(srcfile string, ctype CloneType) error
+	Start(gui bool) error
+	Stop() error
+	Delete() error
+	IsRunning() (bool, error)
+	HasToolsInstalled() (bool, error)
+	IPAddress() (string, error)
+	Exists() (bool, error)
 }
 
 // Borrowed from https://github.com/mitchellh/packer/blob/master/builder/vmware/common/driver.go

@@ -3,7 +3,6 @@ package vms
 import (
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -31,13 +30,10 @@ type VMConfig struct {
 	GUI bool `json:"gui"`
 }
 
-// Virtual machine configuration
 type VM struct {
 	VMConfig
-	// Underlined virtual machine manager
-	manager vmware.VMManager
-	// Internal reference to the VM's vmx file
-	vmxfile string `json:"-"`
+	// Underlined VMWare virtual machine
+	vmwareVM vmware.VirtualMachine
 	// VM IP address as reported by VMWare
 	IPAddress string `json:"ip_address"`
 	// Power status
@@ -49,8 +45,7 @@ func NewVM(vmcfg VMConfig) *VM {
 
 	return &VM{
 		VMConfig: vmcfg,
-		manager:  new(vmware.Fusion7),
-		vmxfile:  vmxfile,
+		vmwareVM: vmware.NewFusion7VM(vmxfile),
 	}
 }
 
@@ -65,10 +60,7 @@ func (v *VM) setDefaults() {
 	}
 }
 
-// Downloads OS image, creates and launches a virtual machine.
-func (v *VM) Create() error {
-	log.Printf("[DEBUG] Creating VM %s", v.ID)
-
+func (v *VM) unpackGoldImage() (string, error) {
 	image := v.OSImage
 	goldPath := filepath.Join(config.GoldImgsPath, image.Checksum)
 
@@ -81,14 +73,14 @@ func (v *VM) Create() error {
 
 		imgPath := filepath.Join(config.ImagesPath, image.Checksum)
 		if err = image.Download(imgPath); err != nil {
-			return err
+			return "", err
 		}
 		defer image.file.Close()
 
 		// Makes sure file cursor is in the right position.
 		_, err := image.file.Seek(0, 0)
 		if err != nil {
-			return err
+			return "", err
 		}
 
 		log.Printf("[DEBUG] Unpacking gold virtual machine into %s\n", goldPath)
@@ -96,8 +88,20 @@ func (v *VM) Create() error {
 		if err != nil {
 			debug.PrintStack()
 			log.Printf("[ERROR] Unpacking gold image %s\n", image.file.Name())
-			return err
+			return "", err
 		}
+	}
+
+	return goldPath, nil
+}
+
+// Downloads OS image, creates and launches a virtual machine.
+func (v *VM) Create() error {
+	log.Printf("[DEBUG] Creating VM %s", v.ID)
+
+	goldPath, err := v.unpackGoldImage()
+	if err != nil {
+		return err
 	}
 
 	pattern := filepath.Join(goldPath, "**.vmx")
@@ -112,24 +116,17 @@ func (v *VM) Create() error {
 	goldvmx := files[0]
 	log.Printf("[DEBUG] Gold vmx file found at %v", goldvmx)
 
-	vmFolder := filepath.Join(config.VMSPath, v.ID)
-	clonevmx := filepath.Join(config.VMSPath, v.ID, v.ID+".vmx")
+	vmexists, err := v.vmwareVM.Exists()
+	if err != nil {
+		return err
+	}
 
-	if _, err = os.Stat(clonevmx); os.IsNotExist(err) {
-		log.Printf("[INFO] Virtual machine clone not found: %s, err: %+v", clonevmx, err)
-		// If there is not a VMX file, make sure nothing else is in there either.
-		os.RemoveAll(vmFolder)
-
-		log.Printf("[INFO] Cloning gold vmx into %s...", clonevmx)
-		err := v.manager.Clone(goldvmx, clonevmx, vmware.CloneLinked)
+	if !vmexists {
+		err := v.vmwareVM.CloneFrom(goldvmx, vmware.CloneLinked)
 		if err != nil {
 			return err
 		}
-	} else {
-		log.Printf("[INFO] Clone %s already exist, moving on.", clonevmx)
 	}
-
-	v.vmxfile = clonevmx
 
 	if err = v.Update(); err != nil {
 		return err
@@ -140,12 +137,9 @@ func (v *VM) Create() error {
 
 // Updates virtual machine
 func (v *VM) Update() error {
-	if v.vmxfile == "" {
-		return errors.New("Empty vmxfile. Nothing to update.")
-	}
 	v.setDefaults()
 
-	running, err := v.manager.IsRunning(v.vmxfile)
+	running, err := v.vmwareVM.IsRunning()
 	if err != nil {
 		return err
 	}
@@ -153,7 +147,7 @@ func (v *VM) Update() error {
 	if running {
 		log.Printf("[INFO] Virtual machine seems to be running, we need to " +
 			"power it off in order to make changes.")
-		err = v.manager.Stop(v.vmxfile)
+		err = v.vmwareVM.Stop()
 		if err != nil {
 			return err
 		}
@@ -170,7 +164,7 @@ func (v *VM) Update() error {
 		return err
 	}
 
-	// We need to encode the JSON data in base64 so that the VMX file is not
+	// Encodes JSON data as Base64 so that the VMX file is not
 	// interpreted by VMWare as corrupted.
 	info.Annotation = base64.StdEncoding.EncodeToString(imageJSON)
 
@@ -179,13 +173,13 @@ func (v *VM) Update() error {
 		vmware.NetworkAdapter{NetType: v.Network},
 	}
 
-	err = v.manager.SetInfo(info)
+	err = v.vmwareVM.SetInfo(info)
 	if err != nil {
 		return err
 	}
 
 	log.Println("[INFO] Powering virtual machine on...")
-	err = v.manager.Start(v.vmxfile, v.GUI)
+	err = v.vmwareVM.Start(v.GUI)
 	if err != nil {
 		return err
 	}
@@ -195,51 +189,40 @@ func (v *VM) Update() error {
 
 // Destroys a virtual machine resource
 func (v *VM) Destroy() error {
-	if v.vmxfile == "" {
-		return errors.New("Empty vmxfile. Nothing to destroy.")
-	}
-
-	running, err := v.manager.IsRunning(v.vmxfile)
+	running, err := v.vmwareVM.IsRunning()
 	if err != nil {
 		return err
 	}
 
 	if running {
-		log.Printf("[DEBUG] Stopping %s...", v.vmxfile)
-		if err = v.manager.Stop(v.vmxfile); err != nil {
+		if err = v.vmwareVM.Stop(); err != nil {
 			return err
 		}
 	}
 
-	log.Printf("[DEBUG] Destroying %s...", v.vmxfile)
-	err = v.manager.Delete(v.vmxfile)
+	err = v.vmwareVM.Delete()
 	if err != nil {
 		return err
 	}
 
-	// Just in case
-	if v.ID != "" {
-		os.RemoveAll(filepath.Join(config.VMSPath, v.ID))
-	}
-
-	log.Printf("[DEBUG] VM %s Destroyed.", v.vmxfile)
 	return nil
 }
 
 // Finds a virtual machine by ID
 func FindVM(id string) (*VM, error) {
-	vmxfile := filepath.Join(config.VMSPath, id, id+".vmx")
-
-	_, err := os.Stat(vmxfile)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-
 	vm := NewVM(VMConfig{
 		ID: id,
 	})
 
-	log.Printf("Getting VM information from %s...", vm.vmxfile)
+	exists, err := vm.vmwareVM.Exists()
+	if err != nil {
+		return nil, err
+	}
+
+	if !exists {
+		return nil, nil
+	}
+
 	err = vm.Refresh()
 	if err != nil {
 		return nil, err
@@ -250,12 +233,9 @@ func FindVM(id string) (*VM, error) {
 
 // Refreshes state with VMware
 func (v *VM) Refresh() error {
-	if v.vmxfile == "" {
-		return errors.New("Empty vmxfile. Nothing to refresh.")
-	}
 
-	log.Printf("[DEBUG] Refreshing state with VMWare %s...", v.vmxfile)
-	info, err := v.manager.Info(v.vmxfile)
+	log.Printf("[DEBUG] Refreshing state with VMWare...")
+	info, err := v.vmwareVM.Info()
 	if err != nil {
 		return err
 	}
@@ -264,7 +244,7 @@ func (v *VM) Refresh() error {
 	v.Memory = info.MemorySize
 	v.ID = info.Name
 
-	v.IPAddress, err = v.manager.IPAddress(v.vmxfile)
+	v.IPAddress, err = v.vmwareVM.IPAddress()
 	if err != nil {
 		return err
 	}
@@ -286,7 +266,7 @@ func (v *VM) Refresh() error {
 		v.Network = info.NetworkAdapters[0].NetType
 	}
 
-	running, err := v.manager.IsRunning(v.vmxfile)
+	running, err := v.vmwareVM.IsRunning()
 	if err != nil {
 		return err
 	}
@@ -297,6 +277,6 @@ func (v *VM) Refresh() error {
 		v.Status = "stopped"
 	}
 
-	log.Printf("[DEBUG] Finished refreshing state from %s...", v.vmxfile)
+	log.Printf("[DEBUG] Finished refreshing state from VMWare")
 	return nil
 }
