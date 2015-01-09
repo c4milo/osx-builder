@@ -137,4 +137,8 @@ Once the creation process finishes, the following properties are going to be pop
 ## Caveats:
 * VMWare VIX handles internal locking to avoid corruption of virtual machine files. If there is an attempt to get VM information when the VM is locked, you may get properties with empty values.
 
-* In case you provide a callback URL, once it is called, there is not guarantee you will receive an IP Address as this will depend on IP acquisition timing and VMTools in the Guest OS taking its own time finding out the assigned IP address.
+* In case you provide a callback URL, once it is called, there is not guarantee you will receive an IP Address as this will depend on IP acquisition timing as well as VMTools in the Guest OS taking its own time finding out the assigned IP address.
+
+* When starting a VM in headless mode, the VM doesn't seem to boot in VMWare Fusion 7
+It does boot, though, if we start it with "gui". Go figure why... The problem with starting with "gui" is that it won't be possible to delete the VM using normal `vmrun` means. `vmrun` returns "This VM is in use." when we attempt to issue `deleteVM`. Due to this issue, we decided to forcibly delete the VM directly from the file system. However, this may or may not cause a memory issue as open windows will pile up given that we are unable to close them programmatically.
+
