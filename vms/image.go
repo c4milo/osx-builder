@@ -16,8 +16,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-
-	"github.com/dustin/go-humanize"
 )
 
 // A virtual machine image definition
@@ -143,7 +141,7 @@ func (img *Image) write(reader io.Reader, filePath string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("[DEBUG] %s written to %s", humanize.Bytes(uint64(written)), filePath)
+	log.Printf("[DEBUG] %d bytes written to %s", written, filePath)
 
 	return compressedFile, nil
 }
