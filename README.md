@@ -1,6 +1,6 @@
-# OSX Builder Service
+# OSX Builder
 
-The OSX Builder is a small HTTP API that allows to create and destroy virtual machines in VMWare Fusion or Workstation.
+The OSX Builder is a small HTTP API that allows to run OSX buildets on OS X virtual machines running on VMWare Fusion
 
 ## HTTP response codes
 
@@ -104,9 +104,9 @@ Once the creation process finishes, the following properties are going to be pop
 ### Example
 
 ```shell
-% curl http://localhost:12345/vms/282ee68a-2e4d-4bd7-9c0e-7f37e12fc489
+% curl http://localhost:12345/vms/c8a934d72293a7d31baf
 {
-  "id": "282ee68a-2e4d-4bd7-9c0e-7f37e12fc489",
+  "id": "c8a934d72293a7d31baf",
   "image": {
     "url": "https://github.com/hooklift/boxes/releases/download/coreos-dev-20141126/coreos_developer_vmware.tar.gz",
     "checksum": "5cf00d380e28d02f30efaceafef7c7c8bdedae33",
@@ -127,7 +127,7 @@ Once the creation process finishes, the following properties are going to be pop
 ### Example
 
 ```shell
-% curl -X DELETE http://localhost:12345/vms/282ee68a-2e4d-4bd7-9c0e-7f37e12fc489
+% curl -X DELETE http://localhost:12345/vms/c8a934d72293a7d31baf
 ```
 
 ## Caveats:
