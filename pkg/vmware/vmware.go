@@ -8,6 +8,7 @@ import (
 	"strings"
 )
 
+// NetworkType represents all valid types of networking in VMware, except by "custom".
 type NetworkType string
 
 const (
@@ -16,6 +17,7 @@ const (
 	NetworkBridged  NetworkType = "bridged"
 )
 
+// CloneType represents the type of clonning strategy when creating new VMs.
 type CloneType string
 
 const (
@@ -23,6 +25,8 @@ const (
 	CloneLinked CloneType = "linked"
 )
 
+// VMInfo defines the minimum amount of VM properties needed either to be configured
+// or to be returned back for the purpose of this project.
 type VMInfo struct {
 	Name        string
 	Annotation  string
@@ -32,6 +36,7 @@ type VMInfo struct {
 	NetworkType NetworkType
 }
 
+// VirtualMachine defines the set of virtual machine operations used in this project.
 type VirtualMachine interface {
 	lookupVMRunPath() error
 	Info() (*VMInfo, error)

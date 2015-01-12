@@ -7,17 +7,20 @@ import (
 	"strconv"
 )
 
-// Options type to configure rendering
+// Options represents the set of values to pass when rendering content.
 type Options struct {
+	// HTTP status to return
 	Status int
-	Data   interface{}
-	Cache  bool
+	// Content to serialize
+	Data interface{}
+	// Whether or not to cache the response
+	Cache bool
 }
 
-// Renders JSON and send it to the HTTP client, supports caching
+// JSON renders JSON content and sends it to the HTTP client. It supports caching.
 func JSON(w http.ResponseWriter, opts Options) error {
 	if &w == nil {
-		return fmt.Errorf("You must provide a http.ResponseWriter")
+		return fmt.Errorf("You must provide a valid http.ResponseWriter")
 	}
 
 	headers := w.Header()

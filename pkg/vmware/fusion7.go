@@ -10,11 +10,14 @@ import (
 	"strings"
 )
 
+// Fusion7VM defines a VMWare Fusion7 provider.
 type Fusion7VM struct {
 	vmxPath   string
 	vmRunPath string
 }
 
+// NewFusion7VM creates a new instance of Fusion7VM, receiving a VMX file path
+// as parameter.
 func NewFusion7VM(vmxPath string) *Fusion7VM {
 	fusion7 := &Fusion7VM{
 		vmxPath: vmxPath,
@@ -27,6 +30,7 @@ func NewFusion7VM(vmxPath string) *Fusion7VM {
 	return fusion7
 }
 
+// lookupVMRunPath finds vmrun tool in local filesystem.
 func (v *Fusion7VM) lookupVMRunPath() error {
 	vmrunPath := os.Getenv("VMWARE_VMRUN_PATH")
 
@@ -44,6 +48,7 @@ func (v *Fusion7VM) lookupVMRunPath() error {
 	return nil
 }
 
+// verifyVMXPath verifies that the VMX file path is not empty.
 func (v *Fusion7VM) verifyVMXPath() error {
 	if v.vmxPath == "" {
 		return errors.New("[Fusion7] Empty VMX file path. Nothing to operate on.")
@@ -51,12 +56,13 @@ func (v *Fusion7VM) verifyVMXPath() error {
 	return nil
 }
 
-func (v *Fusion7VM) CloneFrom(srcfile string, ctype CloneType) error {
+// CloneFrom clones the source VMX file into the VMX file path of the function receiver.
+func (v *Fusion7VM) CloneFrom(src string, ctype CloneType) error {
 	if err := v.verifyVMXPath(); err != nil {
 		return err
 	}
 
-	cmd := exec.Command(v.vmRunPath, "clone", srcfile, v.vmxPath, string(ctype))
+	cmd := exec.Command(v.vmRunPath, "clone", src, v.vmxPath, string(ctype))
 	if _, _, err := runAndLog(cmd); err != nil {
 		return err
 	}
@@ -64,12 +70,13 @@ func (v *Fusion7VM) CloneFrom(srcfile string, ctype CloneType) error {
 	return nil
 }
 
+// Info returns the virtual machine information from VMWare
 func (v *Fusion7VM) Info() (*VMInfo, error) {
 	if err := v.verifyVMXPath(); err != nil {
 		return nil, err
 	}
 
-	vmx, err := readvmx(v.vmxPath)
+	vmx, err := readVMXFile(v.vmxPath)
 	if err != nil {
 		return nil, err
 	}
@@ -96,12 +103,13 @@ func (v *Fusion7VM) Info() (*VMInfo, error) {
 	return info, nil
 }
 
+// SetInfo stores the VM information in VMWare
 func (v *Fusion7VM) SetInfo(info *VMInfo) error {
 	if err := v.verifyVMXPath(); err != nil {
 		return err
 	}
 
-	vmx, err := readvmx(v.vmxPath)
+	vmx, err := readVMXFile(v.vmxPath)
 	if err != nil {
 		return err
 	}
@@ -133,18 +141,21 @@ func (v *Fusion7VM) SetInfo(info *VMInfo) error {
 	vmx["ethernet0.virtualdev"] = "e1000"
 	vmx["ethernet0.connectiontype"] = string(info.NetworkType)
 
-	if err := writevmx(v.vmxPath, vmx); err != nil {
+	if err := writeVMXFile(v.vmxPath, vmx); err != nil {
 		return err
 	}
 
 	return nil
 }
 
+// Start launches a virtual machine.
+//
 // Known issues:
-// When starting a VM with "nogui", the VM doesn't seem to boot in VMWare Fusion 7
-// It does boot, though, if we start it with "gui". Go figure why...
-// The problem with starting with "gui" is that it won't be possible to delete
-// the VM using normal means. vmrun returns "This VM is in use."
+// When starting a VM in headless mode, the VM doesn't seem to boot in VMWare Fusion 7
+// It does boot, though, if we start it with headless mode disabled. Go figure why...
+// The problem with starting with headless mode disabled is that it won't be possible to delete
+// the VM using normal means and to overcome this we are deleting the VM from
+// the filesystem by force.
 func (v *Fusion7VM) Start(headless bool) error {
 	if err := v.verifyVMXPath(); err != nil {
 		return err
@@ -163,6 +174,7 @@ func (v *Fusion7VM) Start(headless bool) error {
 	return nil
 }
 
+// Stop stops a virtual machine.
 func (v *Fusion7VM) Stop() error {
 	if err := v.verifyVMXPath(); err != nil {
 		return err
@@ -176,6 +188,7 @@ func (v *Fusion7VM) Stop() error {
 	return nil
 }
 
+// Delete removes a virtual machine using normal vmrun means.
 func (v *Fusion7VM) Delete() error {
 	if err := v.verifyVMXPath(); err != nil {
 		return err
@@ -189,6 +202,7 @@ func (v *Fusion7VM) Delete() error {
 	return nil
 }
 
+// IsRunning returns whether or not a virtual machine is running.
 func (v *Fusion7VM) IsRunning() (bool, error) {
 	if err := v.verifyVMXPath(); err != nil {
 		return false, err
@@ -209,6 +223,7 @@ func (v *Fusion7VM) IsRunning() (bool, error) {
 	return false, nil
 }
 
+// HasToolsInstalled returns whether or not VMWare Tools is running in the VM.
 func (v *Fusion7VM) HasToolsInstalled() (bool, error) {
 	if err := v.verifyVMXPath(); err != nil {
 		return false, err
@@ -228,6 +243,7 @@ func (v *Fusion7VM) HasToolsInstalled() (bool, error) {
 	return false, nil
 }
 
+// IPAddress queries VMWare Tools to get the virtual machine IP address.
 func (v *Fusion7VM) IPAddress() (string, error) {
 	if err := v.verifyVMXPath(); err != nil {
 		return "", err
@@ -248,6 +264,7 @@ func (v *Fusion7VM) IPAddress() (string, error) {
 	return "", nil
 }
 
+// Exists returns whether or not the VMX file for this VM exists.
 func (v *Fusion7VM) Exists() (bool, error) {
 	if err := v.verifyVMXPath(); err != nil {
 		return false, err

@@ -14,13 +14,15 @@ import (
 	"github.com/c4milo/osx-builder/pkg/render"
 )
 
+// Handlers is a map to functions where each function is in charge of handling
+// a HTTP verb or method.
 var Handlers map[string]func(http.ResponseWriter, *http.Request) = map[string]func(http.ResponseWriter, *http.Request){
 	"POST":   CreateVM,
 	"GET":    GetVM,
 	"DELETE": DestroyVM,
 }
 
-// Defines parameters supported by the CreateVM service
+// CreateVMParams defines parameters supported by the CreateVM service.
 type CreateVMParams struct {
 	VMConfig
 	// Script to run inside the Guest OS upon first boot
@@ -31,7 +33,8 @@ type CreateVMParams struct {
 	CallbackURL string `json:"callback_url"`
 }
 
-// Invokes callback URL with results of the creation process
+// sendResult invokes callback URL with results of the creation process only if a
+// callback URL was provided.
 func sendResult(url string, value interface{}) {
 	if url == "" {
 		return
@@ -53,7 +56,7 @@ func sendResult(url string, value interface{}) {
 	}
 }
 
-// Creates a virtual machine with the given parameters
+// CreateVM creates a virtual machine using the given parameters.
 func CreateVM(w http.ResponseWriter, req *http.Request) {
 	var params CreateVMParams
 	body, err := ioutil.ReadAll(req.Body)
@@ -123,13 +126,13 @@ func CreateVM(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
-// Defines parameters supported by the DestroyVM service
+// DestroyVMParams defines parameters supported by the DestroyVM service.
 type DestroyVMParams struct {
 	// Virtual machine ID
 	ID string
 }
 
-// Destroys virtual machines by ID
+// DestroyVM removes virtual machines by its ID.
 func DestroyVM(w http.ResponseWriter, req *http.Request) {
 	params := DestroyVMParams{
 		ID: path.Base(req.URL.Path),
@@ -175,12 +178,12 @@ func DestroyVM(w http.ResponseWriter, req *http.Request) {
 	})
 }
 
-// Defines parameters supported by the GetVM service
+// GetVMParams defines parameters supported by the GetVM service.
 type GetVMParams struct {
 	ID string
 }
 
-// Returns information of a virtual machine given its ID
+// GetVM returns information of a virtual machine given its ID.
 func GetVM(w http.ResponseWriter, req *http.Request) {
 	params := GetVMParams{
 		ID: path.Base(req.URL.Path),

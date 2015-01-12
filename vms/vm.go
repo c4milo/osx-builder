@@ -15,6 +15,7 @@ import (
 	"github.com/c4milo/osx-builder/pkg/vmware"
 )
 
+// VMConfig defines all the configurable properties of a virtual machine.
 type VMConfig struct {
 	// ID of the virtual machine
 	ID string `json:"id"`
@@ -30,6 +31,7 @@ type VMConfig struct {
 	Headless bool `json:"headless"`
 }
 
+// VM defines the properties of a virtual machine.
 type VM struct {
 	VMConfig
 	// Underlined VMWare virtual machine
@@ -40,16 +42,17 @@ type VM struct {
 	Status string `json:"status"`
 }
 
-func NewVM(vmcfg VMConfig) *VM {
-	vmxfile := filepath.Join(config.VMSPath, vmcfg.ID, vmcfg.ID+".vmx")
+// NewVM creates a new instance of VM.
+func NewVM(c VMConfig) *VM {
+	vmxfile := filepath.Join(config.VMSPath, c.ID, c.ID+".vmx")
 
 	return &VM{
-		VMConfig: vmcfg,
+		VMConfig: c,
 		vmwareVM: vmware.NewFusion7VM(vmxfile),
 	}
 }
 
-// Sets default values for VM attributes
+// setDefaults assigns defalt values for some VM properties.
 func (v *VM) setDefaults() {
 	if v.CPUs <= 0 {
 		v.CPUs = 2
@@ -60,6 +63,7 @@ func (v *VM) setDefaults() {
 	}
 }
 
+// unpackGoldImage fetches and decompresses the Gold OS image.
 func (v *VM) unpackGoldImage() (string, error) {
 	image := v.OSImage
 	goldPath := filepath.Join(config.GoldImgsPath, image.Checksum)
@@ -95,7 +99,7 @@ func (v *VM) unpackGoldImage() (string, error) {
 	return goldPath, nil
 }
 
-// Downloads OS image, creates and launches a virtual machine.
+// Create creates and launches a virtual machine.
 func (v *VM) Create() error {
 	log.Printf("[DEBUG] Creating VM %s", v.ID)
 
@@ -135,7 +139,7 @@ func (v *VM) Create() error {
 	return nil
 }
 
-// Updates virtual machine
+// Updates a virtual machine.
 func (v *VM) Update() error {
 	v.setDefaults()
 
@@ -186,7 +190,7 @@ func (v *VM) Update() error {
 	return nil
 }
 
-// Destroys a virtual machine resource
+// Destroy removes a virtual machine.
 func (v *VM) Destroy() error {
 	running, err := v.vmwareVM.IsRunning()
 	if err != nil {
@@ -211,7 +215,7 @@ func (v *VM) Destroy() error {
 	return nil
 }
 
-// Finds a virtual machine by ID
+// FindVM finds a virtual machine by ID.
 func FindVM(id string) (*VM, error) {
 	vm := NewVM(VMConfig{
 		ID: id,
@@ -234,7 +238,7 @@ func FindVM(id string) (*VM, error) {
 	return vm, nil
 }
 
-// Refreshes state with VMware
+// Refresh synchronizes VM state against VMware.
 func (v *VM) Refresh() error {
 	log.Printf("[DEBUG] Refreshing state with VMWare...")
 	info, err := v.vmwareVM.Info()

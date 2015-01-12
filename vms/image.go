@@ -18,7 +18,7 @@ import (
 	"path/filepath"
 )
 
-// A virtual machine image definition
+// A virtual machine image definition.
 type Image struct {
 	// Image URL where to download from
 	URL string `json:"url"`
@@ -33,7 +33,7 @@ type Image struct {
 	file *os.File
 }
 
-// Downloads and a virtual machine image
+// Downloads and a virtual machine image.
 func (img *Image) Download(destPath string) error {
 	if img.URL == "" {
 		return errors.New("Image URL is required")
@@ -105,7 +105,7 @@ func (img *Image) Download(destPath string) error {
 	return nil
 }
 
-// Gets a VM image through HTTP
+// Gets a VM image through HTTP.
 func (img *Image) fetch(URL string) (io.ReadCloser, error) {
 	client := &http.Client{
 		Transport: &http.Transport{
@@ -128,7 +128,7 @@ func (img *Image) fetch(URL string) (io.ReadCloser, error) {
 
 }
 
-// Writes the downloading stream down to a file
+// Writes the downloading stream down to a file.
 func (img *Image) write(reader io.Reader, filePath string) (*os.File, error) {
 	log.Printf("[DEBUG] Downloading file data to %s", filePath)
 
@@ -146,7 +146,7 @@ func (img *Image) write(reader io.Reader, filePath string) (*os.File, error) {
 	return compressedFile, nil
 }
 
-// Verifies the image package integrity after it is downloaded
+// Verifies the image package integrity after it is downloaded.
 func (img *Image) verify() error {
 	// Makes sure the file cursor is positioned at the beginning of the file
 	_, err := img.file.Seek(0, 0)

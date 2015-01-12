@@ -9,7 +9,8 @@ import (
 	"strings"
 )
 
-func readvmx(vmxpath string) (map[string]string, error) {
+// readVMX reads data from the given VMX file path.
+func readVMXFile(vmxpath string) (map[string]string, error) {
 	data, err := ioutil.ReadFile(vmxpath)
 	if err != nil {
 		return nil, err
@@ -30,7 +31,8 @@ func readvmx(vmxpath string) (map[string]string, error) {
 	return vmx, nil
 }
 
-func writevmx(vmxpath string, vmx map[string]string) error {
+// writeVMX writes to the provided VMX file path from data provided in a map.
+func writeVMXFile(vmxpath string, vmx map[string]string) error {
 	f, err := os.Create(vmxpath)
 	if err != nil {
 		return err
