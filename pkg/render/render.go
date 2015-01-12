@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 )
 
 // Options type to configure rendering
@@ -28,21 +29,17 @@ func JSON(w http.ResponseWriter, opts Options) error {
 		headers.Set("Expires", "0")
 	}
 
-	jsonbytes, err := json.Marshal(opts.Data)
+	jsonBytes, err := json.Marshal(opts.Data)
 	if err != nil {
 		return err
 	}
 
-	headers.Set("Content-Length", fmt.Sprintf("%d", len(jsonbytes)))
+	headers.Set("Content-Length", strconv.Itoa(len(jsonBytes)))
 	if opts.Status <= 0 {
 		opts.Status = http.StatusOK
 	}
 	w.WriteHeader(opts.Status)
-
-	_, err = w.Write(jsonbytes)
-	if err != nil {
-		return err
-	}
+	w.Write(jsonBytes)
 
 	return nil
 }
