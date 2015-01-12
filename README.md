@@ -1,6 +1,6 @@
-# OSX Builder
+# OS X Builder
 
-The OSX Builder is a small HTTP API that allows to run OSX buildets on OS X virtual machines running on VMWare Fusion
+The OS X Builder is a small HTTP API that allows to run Go's buildlets on OS X virtual machines, running on VMWare Fusion.
 
 ## HTTP response codes
 
