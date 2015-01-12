@@ -12,11 +12,15 @@ import (
 // Version string is injected when building the binary from Makefile.
 var Version string
 
-func init() {
+func main() {
+	// Keeps a registry of path function handlers.
 	registry := map[string]map[string]func(http.ResponseWriter, *http.Request){
 		"/vms": vms.Handlers,
 	}
 
+	// Main entry point to handle requests. Based on a URL path, this piece of code
+	// iterates the registry and invokes the path's function handler if there is
+	// match.
 	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
 		for p, handlers := range registry {
 			if strings.HasPrefix(req.URL.Path, p) {
@@ -33,9 +37,7 @@ func init() {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte("Not Found"))
 	})
-}
 
-func main() {
 	address := ":" + config.Port
 	log.Fatal(http.ListenAndServe(address, nil))
 }
