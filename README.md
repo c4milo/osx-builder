@@ -2,6 +2,25 @@
 
 The OS X Builder is a small HTTP API that allows to run Go's buildlets on OS X virtual machines, running on VMWare Fusion.
 
+
+## How it works
+A VMware base image is provided upon VM creation. This image is cached and reused by the API as a "gold" or "pristine" copy. The gold image will be only downloaded and unpacked the first time the API receives a request for creating a virtual machine. From then on, and as long as the gold image is the same, the API is going to re-use that gold image to create linked clones from it. This is what the folder structure kept by this API looks like:
+
+![](https://cldup.com/ekbdZPiZtc.png)
+
+For more information about how linked clones work, please refer to the official documentation: https://www.vmware.com/support/ws55/doc/ws_clone_overview.html
+
+
+## Caveats
+
+* VMWare vmrun handles internal locking to avoid corruption of virtual machine files. If there is an attempt to get VM information when the VM is locked, you may get properties with empty values.
+
+* In case you provide a callback URL, once it is called, there is not guarantee you will receive an IP Address as this will depend on IP acquisition timing as well as VMTools in the Guest OS taking its own time finding out the assigned IP address.
+
+* When starting a VM in headless mode, the VM doesn't seem to boot in VMWare Fusion 7.
+It does boot, though, if we start it with headless mode disabled. Some research was done and it seems to be an issue with VMWare Fusion itself, some Vagrant users have run into the same problem before but the real cause and fix hasn't been determined. 
+
+# API
 ## HTTP response codes
 
 * **202:** Request for creating a virtual machine was accepted
@@ -129,12 +148,4 @@ Once the creation process finishes, the following properties are going to be pop
 ```shell
 % curl -X DELETE http://localhost:12345/vms/c8a934d72293a7d31baf
 ```
-
-## Caveats:
-* VMWare VIX handles internal locking to avoid corruption of virtual machine files. If there is an attempt to get VM information when the VM is locked, you may get properties with empty values.
-
-* In case you provide a callback URL, once it is called, there is not guarantee you will receive an IP Address as this will depend on IP acquisition timing as well as VMTools in the Guest OS taking its own time finding out the assigned IP address.
-
-* When starting a VM in headless mode, the VM doesn't seem to boot in VMWare Fusion 7.
-It does boot, though, if we start it with headless mode disabled. Go figure why... The problem with starting with headless mode disabled is that it won't be possible to delete the VM using normal `vmrun` means. `vmrun` returns this error "This VM is in use." when we attempt to issue `deleteVM`. Due to this issue, we decided to forcibly delete the VM directly from the file system.
 
